@@ -1,0 +1,43 @@
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+*.egg
+
+# ---- IDE ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---- 环境变量（含敏感密钥，禁止提交）----
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ---- 日志 ----
+*.log
+logs/
+
+# ---- Node / 前端 ----
+node_modules/
+dist/
+.DS_Store
+*.local
+
+# ---- 上传 / 临时文件 ----
+backend/uploads/*
+!backend/uploads/.gitkeep
+uploads/
+tmp/
+temp/
+*.sqlite3
+*.db
