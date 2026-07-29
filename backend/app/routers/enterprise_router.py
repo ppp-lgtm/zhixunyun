@@ -65,6 +65,7 @@ def get_mentor_enterprise_id(
 # ============================================================
 
 class EnterpriseRegisterRequest(BaseModel):
+    model_config = {"extra": "ignore"}
     username: str
     password: str
     real_name: str = ""
@@ -80,6 +81,7 @@ class EnterpriseRegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    model_config = {"extra": "ignore"}
     username: str
     password: str
 

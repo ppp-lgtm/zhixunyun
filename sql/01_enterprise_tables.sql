@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS enterprise_evaluations (
     mentor_id           INT NOT NULL COMMENT '企业导师 users.id',
     enterprise_id       INT NOT NULL COMMENT '所属企业 enterprises.id',
     total_score         FLOAT       DEFAULT 0 COMMENT '企业评价总分',
-    dimension_scores    JSON        COMMENT '各维度分：{\"代码质量\":85, ...}',
+    dimension_scores    JSON        COMMENT '各维度分：[{"name":"专业基础","score":90,"reason":"扎实"}, ...]（JSON数组，不是对象！）',
     job_fit_score       FLOAT       DEFAULT 0 COMMENT '岗位适配度 0-100',
     strength_points     TEXT        COMMENT '学生亮点（企业视角）',
     improvement_points  TEXT        COMMENT '待提升点',

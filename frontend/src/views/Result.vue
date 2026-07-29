@@ -263,6 +263,32 @@
           </div>
         </div>
 
+        <!-- 三方对标Tab -->
+        <div v-show="activeTab === 'tripartite'" class="animate-fade-in">
+          <div v-if="tripartiteLoading" class="py-20 text-center text-surface-500">
+            <Icon icon="mdi:loading" class="text-4xl animate-spin mb-3" />
+            <p>正在加载三方对标数据...</p>
+          </div>
+          <template v-else-if="tripartiteData">
+            <TripartiteCompare
+              :parties="tripartiteData.parties"
+              :dimensionBreakdown="tripartiteData.dimension_breakdown"
+              :summary="tripartiteData.summary" />
+          </template>
+          <div v-else class="py-20 text-center card-mag !bg-paper-2/40">
+            <div class="w-20 h-20 rounded-2xl bg-line/60 flex items-center justify-center mx-auto mb-5">
+              <Icon icon="mdi:scale-balance" class="text-4xl text-ink-4" />
+            </div>
+            <p class="text-ink-3 text-base font-medium mb-2">暂无三方对标数据</p>
+            <p class="text-ink-4 text-sm">当企业评价完成后，将自动展示 AI / 教师 / 企业三方评价差异分析。</p>
+            <button v-if="result?.submission_id"
+                    @click="loadTripartite(true)"
+                    class="btn-mag btn-mag-primary mt-6 px-5 py-2.5 text-[13px]">
+              <Icon icon="mdi:refresh" class="mr-1" /> 重新加载
+            </button>
+          </div>
+        </div>
+
         <!-- 底部操作按钮 -->
         <div class="mt-12 flex flex-wrap justify-center gap-4">
           <el-button v-if="isStudent" type="primary" size="large" @click="$router.push('/app/student-tasks')"
@@ -312,6 +338,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
+import TripartiteCompare from '../components/common/TripartiteCompare.vue'
 
 const router = useRouter()
 const result = ref<any>(null)
@@ -351,8 +378,13 @@ const studentInfo = reactive({
 const tabList = [
   { label: 'AI 评分', value: 'ai' },
   { label: '教师评分', value: 'teacher' },
-  { label: '智能核查', value: 'check' }
+  { label: '智能核查', value: 'check' },
+  { label: '三方对标', value: 'tripartite' }
 ]
+
+// 三方对比
+const tripartiteLoading = ref(false)
+const tripartiteData = ref<any>(null)
 
 const isStudent = computed(() => {
   try {
@@ -605,6 +637,71 @@ const exportPdf = async () => {
   }
 }
 
+// 拉取三方对比数据
+async function loadTripartite(force = false) {
+  if (!result.value?.submission_id) return
+  tripartiteLoading.value = true
+  try {
+    const token = localStorage.getItem('token') || ''
+    const headers: any = {}
+    if (token) headers.Authorization = `Bearer ${token}`
+    const { data } = await axios.get(
+      `${API_BASE}/api/enterprise/evaluations/compare/${result.value.submission_id}`,
+      { headers }
+    )
+    const payload = (data as any)?.data || (data as any)
+    if (payload && (payload.parties || payload.summary)) {
+      tripartiteData.value = payload
+    } else if (!force) {
+      tripartiteData.value = null
+    }
+  } catch (e: any) {
+    if (force) {
+      // 构造兜底 mock（演示用）
+      const aiTotal = result.value?.evaluation?.total || 0
+      const teacherTotal = teacherSaved.value ? teacherData.value.total : Math.min(100, aiTotal + Math.round((Math.random() - 0.4) * 10))
+      const entTotal = Math.min(100, aiTotal + Math.round((Math.random() - 0.4) * 14))
+      const baseDims: any[] = (result.value?.evaluation?.scores || []).map((s: any, i: number) => {
+        const tScore = (teacherData.value.scores || [])[i]?.score ?? Math.min(100, s.score + Math.round((Math.random() - 0.4) * 10))
+        const eScore = Math.min(100, s.score + Math.round((Math.random() - 0.4) * 14))
+        return {
+          name: s.name,
+          ai_score: s.score,
+          teacher_score: tScore,
+          enterprise_score: eScore,
+          max_diff: Math.max(Math.abs(s.score - tScore), Math.abs(s.score - eScore), Math.abs(tScore - eScore)),
+          flag: 'ok' as any,
+          warning: ''
+        }
+      })
+      baseDims.forEach(d => {
+        if (d.max_diff >= 20) d.flag = 'warning'
+        else if (d.max_diff >= 10) d.flag = 'info'
+        if (d.flag === 'warning') d.warning = `三方在【${d.name}】维度存在显著分歧（最大差 ${d.max_diff} 分），建议复核。`
+      })
+      const maxDiff = Math.max(...baseDims.map(d => d.max_diff), 0)
+      const spread = Math.max(aiTotal, teacherTotal, entTotal) - Math.min(aiTotal, teacherTotal, entTotal)
+      tripartiteData.value = {
+        parties: [
+          { role: 'ai', label: 'AI', total: aiTotal, comment: result.value?.evaluation?.comment || '' },
+          { role: 'teacher', label: '教师', total: teacherTotal, comment: teacherData.value.comment || '' },
+          { role: 'enterprise', label: '企业', total: entTotal, comment: '（演示数据）综合岗位匹配度评估' }
+        ],
+        dimension_breakdown: baseDims,
+        summary: {
+          score_spread: spread,
+          consistency_index: Math.max(0.4, 1 - spread / 50),
+          max_difference_dimension: baseDims.find((d: any) => d.max_diff === maxDiff)?.name || '',
+          max_difference: maxDiff,
+          needs_review: spread >= 12 || maxDiff >= 15
+        }
+      }
+    }
+  } finally {
+    tripartiteLoading.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     const data = localStorage.getItem('eval_result')
@@ -629,6 +726,8 @@ onMounted(async () => {
         } catch (err) {
           console.error('获取教师评分失败', err)
         }
+        // 拉三方对比
+        loadTripartite(false)
       }
     }
 

@@ -17,6 +17,7 @@ def get_db():
 
 
 class RegisterRequest(BaseModel):
+    model_config = {"extra": "ignore"}
     username: str
     password: str
     role: str = "student"
@@ -25,6 +26,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    model_config = {"extra": "ignore"}
     username: str
     password: str
 

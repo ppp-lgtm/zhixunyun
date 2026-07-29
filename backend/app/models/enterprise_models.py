@@ -86,6 +86,7 @@ class EnterpriseEvaluation(Base):
 
     matched_job_id = Column(Integer, ForeignKey("job_positions.id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     submission = relationship("Submission", foreign_keys=[submission_id])
     mentor = relationship("User", foreign_keys=[mentor_id])

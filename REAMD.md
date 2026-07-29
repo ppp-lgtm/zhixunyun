@@ -142,13 +142,162 @@ frontend/src/
 5. 保存到 `submissions` 和 `evaluations` 表，返回给前端
 6. 教师可通过 `POST /api/teacher/score` 复核并覆盖评分
 
-### 前端设计系统
+### 前端设计系统 v3（杂志/报告/纸张风 · 取自 frontend_ui_demo.html）
 
-- **色彩体系**：主色 = 靛蓝 (#4F46E5)，强调色 = 琥珀 (#F59E0B)，表面色 = 板岩灰阶。定义在 `tailwind.config.js`，含 50–900 色阶。
-- **组件类**（定义于 `global.css`）：`.card`、`.card-hover`、`.btn-primary`、`.btn-accent`、`.btn-ghost`、`.stat-card`、`.badge-*`、`.glass`
-- **Element Plus** 全局覆盖：统一圆角、阴影和焦点环样式。
-- **页面过渡**：`fade-slide`（translateX + scale）在 MainLayout 的 `<router-view>` 中生效。
-- **字体**：Plus Jakarta Sans + Noto Sans SC（中文），通过 Google Fonts 在 `global.css` 中加载。
+> 设计定位：**编辑杂志式 × 科技可视化** 的实训操作台。以米白纸张、绯红印章、衬线大标题为美学符号，用「试卷批改」的隐喻来传达「诚实、严肃、可溯源」的实训评价调性。UI 概念稿源文件：`frontend_ui_demo.html`。
+
+---
+
+#### 一、色彩体系（Paper & Crimson）
+
+| Token | 色值 | 用途 |
+|-------|------|------|
+| `--ink` | `#0F1115` 深夜墨色 | 主文字、品牌方块、深色按钮 |
+| `--ink-2` | `#1C1F26` | 二级文字、代码背景 |
+| `--ink-3` | `#2A2F3A` | 辅助文字、边框线 |
+| `--paper` | `#F6F3EC` 米白纸张 | 页面主背景 |
+| `--paper-2` | `#EFEADE` 纸张阴面 | 卡片凹陷、输入框底、斑马行 |
+| `--line` | `#D9D2C0` 纸边分割 | 全部边框线、分隔线、网格线 |
+| `--accent` ★ | `#FF5A1F` 绯红印章 | 品牌主色：印章、按钮、进度条、hover 下划线、强调标签 |
+| `--accent-soft` | `#FFE6DA` | 强调标签软底 |
+| `--cobalt` | `#3D5AFE` 冷钴蓝 | AI/代码/链接/企业匹配/冷色对比 |
+| `--cobalt-soft` | `#DCE2FF` | AI 卡片软底 |
+| `--jade` | `#1DB955` 翡翠绿 | 通过/合格/绿色步骤 |
+| `--jade-soft` | `#D3F4DF` | 绿色软底 |
+| `--signal` | `#E63946` 信号红 | 失败/雷同/错误/警告缺口 |
+| `--signal-soft` | `#FBD7DA` | 红色软底 |
+| `--amber` | `#F4B740` 琥珀金 | 进行中/部分完成/黄色步骤 |
+| `--amber-soft` | `#FBECC8` | 琥珀软底 |
+
+> 主色使用原则：**绯红 (accent) = 品牌/印章/主按钮**，**冷钴蓝 = AI 与科技**，**翡翠绿 = 通过**，**琥珀金 = 进行中**，**信号红 = 错误**。严格保持五色系，不引入额外色。
+
+---
+
+#### 二、字体家族（衬线 × 科技 × 代码，三角）
+
+```
+--ff-display: "Playfair Display SC", "Noto Serif SC", serif
+     用途：H1/H2 大标题、分数环数字、印章分数、品牌字 —— 衬线小型大写，传达「严肃报告」质感
+
+--ff-sub: "Space Grotesk", "PingFang SC", system-ui, sans-serif
+     用途：H3/H4、标签、导航、KPI 小字、UI 组件文字 —— 现代科技无衬线，做功能信息层
+
+--ff-body: "Fraunces", "Noto Serif SC", Georgia, serif
+     用途：正文段落、描述文字、任务描述 —— 人文衬线，提升长文阅读舒适度
+
+--ff-mono: "JetBrains Mono", ui-monospace, Consolas, monospace
+     用途：代码、任务编号、分数、ID、数据、Tag 编号 —— 等宽字体，工程数据层
+```
+
+Google Fonts 引入（`index.html` / 全局 CSS）：
+```
+Fraunces 300/400/600  +  italic 400
+JetBrains Mono 400/600/700
+Playfair Display SC 700/900
+Space Grotesk 400/500/600/700
+```
+
+---
+
+#### 三、视觉令牌（间距 / 圆角 / 阴影）
+
+| Token | 值 | 说明 |
+|-------|----|------|
+| `--r-sm` | `6px` | 按钮内组件、Tag、小输入框圆角 |
+| `--r-md` | `12px` | 输入框、KPI 卡、小部件 |
+| `--r-lg` | `22px` | 主卡片（任务卡/登录卡/代码块/对比列） |
+| `--r-xl` | `34px` | 大容器 |
+| `--shadow-1` | `0 1px 2px rgba(0,0,0,.06), 0 1px 1px rgba(0,0,0,.04)` | 卡片常态阴影（纸面浮起 1 层） |
+| `--shadow-2` | `0 10px 24px -10px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.06)` | Hover / 弹层（浮起 2 层） |
+| `--shadow-3` | `0 30px 80px -24px rgba(0,0,0,.28), 0 6px 18px rgba(0,0,0,.08)` | 印章 / 强调卡（浮起 3 层） |
+| `--page` | `1240px` | 最大内容宽度（报纸式窄栏布局，非满屏铺开） |
+
+---
+
+#### 四、背景叠层（纸张质感，必配）
+
+页面全局 `body` 必须具备 4 层叠层（从上到下 z-index）：
+
+```
+Layer 4 (z-index:2): .shell 内容容器
+Layer 3 (z-index:1): 颗粒噪点 SVG 叠层  opacity .045  mix-blend-mode:multiply
+         → 模拟纸张颗粒感，使用内联 feTurbulence SVG（无外部资源）
+Layer 2: 冷钴蓝 1200×600 径向渐变 (10% -10%) + 绯红 900×500 径向渐变 (95% 10%)
+Layer 1: 24×24 px 交叉网格 (--line 色 1px) → 工程方格纸底纹
+```
+
+---
+
+#### 五、关键装饰母题（Motif）
+
+1. **绯红圆形印章 `.seal`**：大首页 hero 区/总评卡使用。直径约 260px，`conic-gradient` 从 `#FF8A5C → #FF5A1F → #B4360F`，内圈 1.5px 白色虚线，`rotate(-6deg)` + 两个金属图钉（`.seal-tack`）。这是本风格的精神符号。
+2. **卡片顶部 3px 渐变条 `.card::after`**：`linear-gradient(90deg, #FF5A1F, transparent 60%)`，每张卡都有，制造从左向右褪色的「编辑报告贴纸」感。
+3. **任务左侧 6px 色条 `.task::before`**：`.t-ok` 翡翠绿、`.t-do` 琥珀金、`.t-late` 信号红——即任务清单左边状态色条。
+4. **圆形圆锥分数环 `.score-sm` / `.ring`**：`conic-gradient(var(--c) var(--p), #EFEADE 0)`，内嵌 `inset 0 0 0 6px white` 白底，作为所有分数可视化的唯一载体。
+5. **导航锚点胶囊 `.chip`**：`<数字> 标题` 的黑色数字前缀，border-radius 999px，hover 反色。
+
+---
+
+#### 六、核心组件库（10 个必备组件）
+
+| 组件 | 类名 | 规格 |
+|------|------|------|
+| 顶部毛玻璃导航 | `.topbar` + `.topbar-inner` | `backdrop-filter: blur(10px)`，`rgba(246,243,236,.72)`，下边框 1px `--line` |
+| 品牌方块 + 字 | `.brand-mark` + `.brand-text` | 44×44 圆角 12 黑方块 + 右下角绯红径向光晕；品牌字为 `Playfair Display SC + Space Grotesk` 双层 |
+| 主按钮 `.btn` | 主按钮 / 幽灵 / 强调 | 999px 胶囊，`14px` 字高，hover `translateY(-1px)` + `shadow-3`；强调版用 `--accent` |
+| 通用卡片 `.card` | 登录 / KPI / 信息卡 | 白到半透明渐变背景 + `backdrop-filter:blur(6px)` + 顶部 3px 绯红条 + 圆角 22 + shadow-2 |
+| 状态 Tag `.tag` | `.ok / .warn / .bad / .co / .ac` | 6 种状态 + 6 种软底色，999px 胶囊，11px JetBrains Mono |
+| 任务卡 `.task` | `.t-ok / .t-do / .t-late` | 78px 编号列 + 主内容 + 右侧分数环 `.score-sm`；hover `translateY(-2px)` |
+| 步骤时间线 `.steps-timeline` | `.step-row`（`.ok / .part / .bad`） | 左侧歪斜渐变主线（`skewX(-6deg)`）+ 16px 圆形状态节点 + 白内边阴影 |
+| 代码块 `.code` | 附 `data-name` 文件名 | `--ink` 深色背景 + 白色内边距 18px，右上角 10px 大写文件名，语法色：`#FF8A5C/#6FC3FF/#D6FF3A/#6B7280/#FFB86B`（关键字/函数/字符串/注释/数字） |
+| 三方对比列 `.col` | `.ai / .t / .e` | 三列同宽，顶部 4px 主题色条（钴蓝=AI/绯红=教师/翡翠=企业），48px Playfair Display 超大分数 |
+| 岗位匹配卡 `.job` + `.match-pill` | 含亮点/缺口两栏 | 顶部 4px 钴蓝→绯红渐变条；右侧 92px 黑胶囊（分数 `--ff-display` 26px）；下方 `.two-col` 亮点(绿) + 缺口(红) |
+
+---
+
+#### 七、技能/标签三级配色（B1 岗位匹配用）
+
+```
+.sk-g (Good 已掌握):    --cobalt-soft   #172FA8 字   B8C4F5 边
+.sk-m (Middle 部分):    --jade-soft     #0F6A33 字   B8E7C7 边
+.sk-b (Bad 缺口):       --amber-soft    #7C5300 字   EED48E 边
+```
+
+---
+
+#### 八、布局（报纸式 1.55 : 1 双栏）
+
+所有 `section` 采用固定 1.55 比 1 双栏：
+```css
+grid-template-columns: 1.55fr 1fr;
+gap: 44px;
+max-width: 1240px;
+padding: 56px 28px;
+```
+
+响应式：
+- `≤ 980px`：双栏改单栏；三方对比列改 1 列；圆环 4 个变 2 个；KPI 变 2 列。
+
+---
+
+#### 九、进场动画（Scroll Reveal）
+
+`.reveal` 基类：
+```
+opacity 0 → 1; translateY(14px) → 0;
+transition .6s ease;
+```
+滚动到视窗内时加 `.on`，整体是「严肃页面，滚动柔和浮现」的杂志质感，**不做弹跳/夸张动效**。
+
+---
+
+#### 十、设计反模式（不要做）
+
+1. ❌ 不要满屏铺开（max-width 永远 1240px，维持报纸式窄栏阅读舒适度）
+2. ❌ 不要 Material/Element Plus 的默认大蓝大绿阴影（严格替换为 `--paper/--line/--accent` 五色体系）
+3. ❌ 不要用纯黑纯白（所有深/浅色都有纸张/墨色的色温偏移）
+4. ❌ 不要 emoji 堆砌（唯一图标符号是：印章图钉 ✓ ✕、SVG 线条图标）
+5. ❌ 不要深底文字浅色（代码块唯一例外，其他页面 100% 纸张底色）
 
 ### 关键模式
 

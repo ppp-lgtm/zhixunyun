@@ -1,3 +1,9 @@
 @echo off
-call venv\Scripts\activate
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+cd /d "%~dp0"
+if exist "venv\Scripts\python.exe" (
+    "venv\Scripts\python.exe" serve.py --reload
+) else if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" serve.py --reload
+) else (
+    python serve.py --reload
+)
