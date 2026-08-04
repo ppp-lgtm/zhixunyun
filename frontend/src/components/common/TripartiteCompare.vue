@@ -1,32 +1,32 @@
 <template>
   <div class="tripartite page-enter">
-    <!-- ══════════ 顶部：三方总分卡（三张并排，像成绩单印章戳） ══════════ -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+    <!-- 模式说明（自主设计 vs 企业级） -->
+
+    <!-- ══════════ 顶部：总分卡（两方/三张并排） ══════════
+         - 两方（2 卡）：自动占满整行，均分宽度 → 消除右侧空白
+         - 三方（3 卡）：标准 3 列，卡与卡间距拉开到 gap-6/8
+         - 卡片内部：三行标题结构，彻底消除 AI·初评 与 AI自动评价 的文字重叠
+    -->
+    <div class="flex flex-col md:flex-row w-full gap-5 md:gap-7 mb-8">
       <div
         v-for="p in displayParties()"
         :key="p.role"
-        class="card-mag relative overflow-hidden group"
+        v-show="!(p.role === 'enterprise' && !showEnterprise)"
+        class="flex-1 min-w-0 card-mag relative overflow-hidden group"
       >
-        <!-- 左上角 ROLE CHIP -->
-        <div class="absolute top-5 right-5 flex items-center gap-2">
-          <span class="section-label !tracking-[0.18em] !text-[11px] !py-1.5" :class="roleChipClass(p.role)">
-            {{ partyRoleLabel(p.role) }}
-          </span>
-        </div>
+        <!-- 主体：标题写死为「AI评分 / 教师评分 / 企业评分」，其余文字全部移除 -->
         <div class="flex items-start gap-4 mb-5">
           <div class="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm flex-shrink-0"
                :class="roleIconWrap(p.role)">
             <Icon :icon="partyIcon(p.role)" class="text-3xl" :class="roleIconClass(p.role)" />
           </div>
-          <div>
-            <div class="text-[13px] font-medium text-ink-4 mb-1 font-sub tracking-wide">
-              {{ p.label || partyDefaultLabel(p.role) }}
-            </div>
-            <div class="font-display text-[13px] uppercase tracking-[0.22em] text-ink-3">
-              SCORE · EVAL
+          <div class="min-w-0 flex-1">
+            <div class="text-[17px] font-display font-black text-ink tracking-tight leading-snug">
+              {{ partyCardTitle(p.role) }}
             </div>
           </div>
         </div>
+
         <!-- 分数大数字 -->
         <div class="flex items-end gap-3">
           <div class="font-display text-6xl font-black leading-none tracking-tight"
@@ -54,8 +54,8 @@
       </div>
     </div>
 
-    <!-- ══════════ 一致性概览条（带印章红警示徽章） ══════════ -->
-    <div v-if="summary" class="card-mag mb-8 flex flex-col md:flex-row md:items-center gap-5 md:gap-8">
+    <!-- ══════════ 一致性概览条（企业评价工作台传入 hideConsistencyCard=true 时整卡移除） ══════════ -->
+    <div v-if="summary && !hideConsistencyCard" class="card-mag mb-8 flex flex-col md:flex-row md:items-center gap-5 md:gap-8">
       <div class="flex items-center gap-4 md:pr-8 md:border-r md:border-line">
         <div class="relative w-24 h-24 flex-shrink-0">
           <!-- 印章圆环 -->
@@ -68,7 +68,7 @@
             <text :fill="summary.needs_review ? '#FF5A1F' : '#11A367'" font-size="8"
                   font-family="JetBrains Mono, ui-monospace, monospace" letter-spacing="2">
               <textPath href="#sealCircle">
-                CONFIDENTIAL · 三方评价对标 · {{ summary.needs_review ? 'NEEDS REVIEW · 建议复核' : 'CONSISTENT · 评价一致' }} · ZHI·XUN·YUN · 
+                CONFIDENTIAL · {{ showEnterprise ? '三方评价对标' : '两方评价对标' }} · {{ summary.needs_review ? 'NEEDS REVIEW · 建议复核' : 'CONSISTENT · 评价一致' }} · ZHI·XUN·YUN · 
               </textPath>
             </text>
           </svg>
@@ -85,7 +85,7 @@
         <div class="min-w-0">
           <div class="section-label !mb-2">OVERVIEW · 一致性指数</div>
           <h4 class="font-display text-2xl font-bold text-ink tracking-tight mb-1">
-            {{ summary.needs_review ? '发现差异点，建议人工复核' : '三方评价高度一致' }}
+            {{ summary.needs_review ? '发现差异点，建议人工复核' : (showEnterprise ? '三方评价高度一致' : '两方评价高度一致') }}
           </h4>
           <p class="font-body text-ink-4 text-[14.5px]">
             综合分差 {{ summary.score_spread }} 分；
@@ -99,9 +99,10 @@
           </p>
         </div>
       </div>
-      <div class="grid grid-cols-3 gap-4 flex-1 min-w-0">
+      <div class="grid gap-4 flex-1 min-w-0"
+           :class="showEnterprise ? 'grid-cols-3' : 'grid-cols-2'">
         <div class="p-4 rounded-xl bg-paper-2/60 border border-line/70">
-          <div class="text-[11px] font-sub uppercase tracking-[0.18em] text-ink-4 mb-2">三方总分差</div>
+          <div class="text-[11px] font-sub uppercase tracking-[0.18em] text-ink-4 mb-2">{{ showEnterprise ? '三方总分差' : '两方总分差' }}</div>
           <div class="font-display text-2xl font-black text-ink">
             {{ summary.score_spread }}
             <span class="text-sm font-medium text-ink-4 ml-1">/40</span>
@@ -115,7 +116,7 @@
             <span class="text-sm font-medium text-ink-4 ml-1">pts</span>
           </div>
         </div>
-        <div class="p-4 rounded-xl bg-paper-2/60 border border-line/70">
+        <div v-if="showEnterprise" class="p-4 rounded-xl bg-paper-2/60 border border-line/70">
           <div class="text-[11px] font-sub uppercase tracking-[0.18em] text-ink-4 mb-2">建议动作</div>
           <div class="font-display text-lg font-bold mt-2">
             <span v-if="summary.needs_review" class="text-seal-dark">⚠ 复核</span>
@@ -125,14 +126,14 @@
       </div>
     </div>
 
-    <!-- ══════════ 维度对标明细（三列并排 + 差异≥15淡红底+⚠徽章） ══════════ -->
+    <!-- ══════════ 维度对标明细 ══════════ -->
     <div class="card-mag overflow-hidden">
       <!-- section header -->
       <div class="px-8 py-5 border-b border-line/80 flex items-center justify-between flex-wrap gap-3">
         <div>
           <div class="section-label !mb-1.5">DIMENSION · 维度对标表</div>
           <h4 class="font-display text-xl font-bold text-ink tracking-tight">
-            三方评分 · 逐维度差异
+            {{ showEnterprise ? '三方评分 · 逐维度差异' : '两方评分 · 逐维度差异' }}
           </h4>
         </div>
         <div class="flex items-center gap-3 text-[12px]">
@@ -149,7 +150,8 @@
       </div>
 
       <!-- table head -->
-      <div class="hidden md:grid grid-cols-12 gap-0 px-8 py-3 bg-paper-2/60 border-b border-line/60
+      <div v-if="showEnterprise"
+           class="hidden md:grid grid-cols-12 gap-0 px-8 py-3 bg-paper-2/60 border-b border-line/60
                   text-[11.5px] font-sub uppercase tracking-[0.16em] text-ink-4">
         <div class="col-span-4">维度 · Dimension</div>
         <div class="col-span-2 text-center">AI 自动评价</div>
@@ -157,18 +159,27 @@
         <div class="col-span-2 text-center">企业终评</div>
         <div class="col-span-2 text-center pr-2">分差 · 状态</div>
       </div>
+      <div v-else
+           class="hidden md:grid grid-cols-12 gap-0 px-8 py-3 bg-paper-2/60 border-b border-line/60
+                  text-[11.5px] font-sub uppercase tracking-[0.16em] text-ink-4">
+        <div class="col-span-5">维度 · Dimension</div>
+        <div class="col-span-3 text-center">AI 自动评价</div>
+        <div class="col-span-3 text-center">教师复评</div>
+        <div class="col-span-1 text-right pr-3">分差 · 状态</div>
+      </div>
 
       <!-- rows -->
       <div v-for="(row, idx) in dimensionBreakdown" :key="row.name + idx"
-           class="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-0 px-8 py-5 border-b border-line/40
-                  transition-colors duration-200 group"
-           :class="{
-             'bg-seal/[0.05] hover:bg-seal/[0.08]': row.flag === 'warning',
-             'bg-amber/[0.05] hover:bg-amber/[0.08]': row.flag === 'info',
-             'hover:bg-paper-2/50': row.flag === 'ok',
-           }">
+           class="grid grid-cols-1 gap-3 md:gap-0 px-8 py-5 border-b border-line/40
+                  transition-colors duration-200 group md:grid-cols-12"
+           :class="[
+             row.flag === 'warning' ? 'bg-seal/[0.05] hover:bg-seal/[0.08]' : '',
+             row.flag === 'info'    ? 'bg-amber/[0.05] hover:bg-amber/[0.08]' : '',
+             row.flag === 'ok'      ? 'hover:bg-paper-2/50' : ''
+           ]">
         <!-- name + 图标 -->
-        <div class="md:col-span-4 flex items-center gap-4 min-w-0">
+        <div :class="showEnterprise ? 'md:col-span-4' : 'md:col-span-5'"
+             class="flex items-center gap-4 min-w-0">
           <div class="relative flex-shrink-0">
             <div class="w-11 h-11 rounded-xl flex items-center justify-center font-display text-lg font-black"
                  :class="row.flag === 'warning'
@@ -193,7 +204,8 @@
         </div>
 
         <!-- AI score -->
-        <div class="md:col-span-2 md:text-center md:px-3 flex md:block items-center justify-between md:justify-center">
+        <div :class="showEnterprise ? 'md:col-span-2' : 'md:col-span-3'"
+             class="md:text-center md:px-3 flex md:block items-center justify-between md:justify-center">
           <span class="md:hidden text-[11px] font-sub uppercase tracking-wider text-ink-4">AI:</span>
           <span v-if="row.ai_score != null"
                 class="font-display font-black text-[22px] leading-none text-violet-700 tabular-nums">
@@ -203,7 +215,8 @@
         </div>
 
         <!-- Teacher score -->
-        <div class="md:col-span-2 md:text-center md:px-3 flex md:block items-center justify-between md:justify-center">
+        <div :class="showEnterprise ? 'md:col-span-2' : 'md:col-span-3'"
+             class="md:text-center md:px-3 flex md:block items-center justify-between md:justify-center">
           <span class="md:hidden text-[11px] font-sub uppercase tracking-wider text-ink-4">教师:</span>
           <span v-if="row.teacher_score != null"
                 class="font-display font-black text-[22px] leading-none text-cobalt tabular-nums">
@@ -212,18 +225,21 @@
           <span v-else class="text-ink-4 font-medium text-sm">—</span>
         </div>
 
-        <!-- Enterprise score -->
-        <div class="md:col-span-2 md:text-center md:px-3 flex md:block items-center justify-between md:justify-center">
-          <span class="md:hidden text-[11px] font-sub uppercase tracking-wider text-ink-4">企业:</span>
-          <span v-if="row.enterprise_score != null"
-                class="font-display font-black text-[22px] leading-none text-seal-dark tabular-nums">
-            {{ Math.round(row.enterprise_score) }}
-          </span>
-          <span v-else class="text-ink-4 font-medium text-sm">—</span>
-        </div>
+        <!-- Enterprise score (only when showEnterprise) -->
+        <template v-if="showEnterprise">
+          <div class="md:col-span-2 md:text-center md:px-3 flex md:block items-center justify-between md:justify-center">
+            <span class="md:hidden text-[11px] font-sub uppercase tracking-wider text-ink-4">企业:</span>
+            <span v-if="row.enterprise_score != null"
+                  class="font-display font-black text-[22px] leading-none text-seal-dark tabular-nums">
+              {{ Math.round(row.enterprise_score) }}
+            </span>
+            <span v-else class="text-ink-4 font-medium text-sm">—</span>
+          </div>
+        </template>
 
         <!-- diff + status -->
-        <div class="md:col-span-2 md:pr-2 md:pl-4 flex items-center justify-between md:justify-end gap-3">
+        <div :class="showEnterprise ? 'md:col-span-2 md:pr-2 md:pl-4' : 'md:col-span-1 md:pr-3'"
+             class="flex items-center justify-between md:justify-end gap-3">
           <div class="hidden md:block w-24 h-2 rounded-full bg-line overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-500"
@@ -249,13 +265,14 @@
 
       <div v-if="!dimensionBreakdown || dimensionBreakdown.length === 0"
            class="px-8 py-16 text-center font-body text-ink-4">
-        暂无三方评价数据，请等待 AI 自动评分、教师复评完成后再查看。
+        暂无{{ showEnterprise ? '三方' : '两方' }}评价数据，请等待 AI 自动评分、教师复评完成后再查看。
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 
 /** ---- Types：严格对齐后端 /evaluations/compare/{id} 返回 ---- */
@@ -286,7 +303,15 @@ const props = defineProps<{
   parties?: PartyScore[]
   dimensionBreakdown?: DimensionRow[]
   summary?: Summary
+  enterpriseInvolved?: boolean | null
+  /** 企业评价工作台不需要顶部的一致性指数大卡片，传 true 隐藏 */
+  hideConsistencyCard?: boolean
 }>()
+
+const showEnterprise = computed(() => {
+  if (props.enterpriseInvolved === false) return false
+  return true
+})
 
 const defaultParties: PartyScore[] = [
   { role: 'ai',        total: 0 },
@@ -296,15 +321,18 @@ const defaultParties: PartyScore[] = [
 const displayParties = () => {
   if (props.parties && props.parties.length > 0) {
     const filled = [...props.parties]
-    // 补齐三方（缺失的补 0 pending）
-    for (const need of ['ai','teacher','enterprise'] as const) {
+    // 补齐（enterprise_involved=false 时不强制补 enterprise 空卡）
+    const needRoles: Array<'ai'|'teacher'|'enterprise'> = showEnterprise.value
+      ? ['ai','teacher','enterprise']
+      : ['ai','teacher']
+    for (const need of needRoles) {
       if (!filled.find(p => p.role === need)) {
         filled.push({ role: need, total: 0, comment: '(尚未评价)' })
       }
     }
     return filled
   }
-  return defaultParties
+  return showEnterprise.value ? defaultParties : defaultParties.filter(p => p.role !== 'enterprise')
 }
 
 /* ---- helpers ---- */
@@ -349,6 +377,31 @@ function partyDefaultLabel(r: string) {
   if (r === 'ai') return 'DeepSeek + 规则引擎 自动评价'
   if (r === 'teacher') return '授课教师复评'
   return '企业导师终评'
+}
+/* ---- 标题分层（彻底解决重叠） ---- */
+// 主标题：大号，第一行视觉焦点（AI 自动评价 / 教师评价 / 企业评价）
+function partyMainTitle(p: PartyScore) {
+  // 优先用 p.label 去掉「来源」后的主体；否则按 role 取主标题
+  if (p.label) {
+    // 如果 label 里包含了「自动评价/教师评价」等字样，直接作为主标题
+    const raw = String(p.label || '').trim()
+    if (raw) return raw
+  }
+  if (p.role === 'ai') return 'AI 自动评价'
+  if (p.role === 'teacher') return '教师评价'
+  return '企业评价'
+}
+// 副标题：弱化显示（评价引擎、评价人、评价时间等说明信息）
+function partySubTitle(p: PartyScore) {
+  if (p.role === 'ai') return 'DeepSeek + 规则引擎 · 初评'
+  if (p.role === 'teacher') return '授课教师 · 复评'
+  return '企业导师 · 终评'
+}
+// 卡片顶部唯一标题：只显示 4 个中文字，不允许任何其他文字、英文、副标题、角标。
+function partyCardTitle(role: string) {
+  if (role === 'ai') return 'AI评分'
+  if (role === 'teacher') return '教师评分'
+  return '企业评分'
 }
 function roleChipClass(r: string) {
   if (r === 'ai')       return '!bg-violet-500/10 !text-violet-700 !border-violet-400/30'

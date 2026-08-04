@@ -1,669 +1,510 @@
 <template>
   <div class="min-h-full page-enter">
-    <div class="max-w-7xl mx-auto">
-      <!-- 面包屑 + Title 区域 -->
-      <div class="mb-10">
-        <div class="flex items-center gap-2 text-sm text-surface-500 mb-3">
-          <Icon icon="mdi:home-outline" class="text-base" />
-          <span>/</span>
-          <span>企业中心</span>
-          <span>/</span>
-          <span class="text-surface-800 font-medium">学生岗位匹配</span>
+    <!-- ============ 顶部：岗位条 + 筛选/操作 ============ -->
+    <div class="mb-8">
+      <div class="flex items-end md:items-center justify-between flex-wrap gap-4 mb-5">
+        <div>
+          <h1 class="font-display text-3xl font-black text-ink tracking-tight">学生岗位匹配榜</h1>
+          <p class="text-ink-3 mt-1 text-[13.5px] font-body">基于学生实训表现，计算学生与岗位的适配度</p>
         </div>
-        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-          <div>
-            <h1 class="text-3xl font-bold text-surface-800 tracking-tight">学生岗位匹配</h1>
-            <p class="text-surface-500 mt-1">AI 智能匹配最优候选人，快速发现潜力人才</p>
-          </div>
-          <div class="flex items-center gap-3">
-            <button class="btn-ghost px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2">
-              <Icon icon="mdi:download-outline" />
-              导出名单
-            </button>
-            <button class="btn-primary text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2">
-              <Icon icon="mdi:refresh" />
-              重新匹配
-            </button>
-          </div>
+        <div class="flex items-center gap-2">
+          <button @click="refreshMatch" :disabled="loading" class="btn-mag btn-mag-ghost px-4 py-2.5 text-[13px]">
+            <Icon icon="mdi:refresh" class="mr-1" :class="{'animate-spin': loading}" />
+            重新匹配
+          </button>
+          <button @click="exportReport" :disabled="!jobInfo?.id || !classId" class="btn-mag btn-mag-secondary px-4 py-2.5 text-[13px]">
+            <Icon icon="mdi:file-document-outline" class="mr-1" /> 下载文字报告
+          </button>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <!-- 左侧岗位筛选 -->
-        <div class="lg:col-span-3 space-y-6">
-          <!-- 岗位选择卡片 -->
-          <div class="card">
-            <div class="px-6 py-4 border-b border-surface-100">
-              <div class="flex items-center gap-2">
-                <Icon icon="mdi:briefcase-outline" class="text-primary-500 text-lg" />
-                <h3 class="font-bold text-surface-800">选择岗位</h3>
-              </div>
-            </div>
-            <div class="p-4 space-y-2">
-              <div v-for="job in jobList" :key="job.id"
-                @click="selectedJob = job.id"
-                class="p-4 rounded-xl cursor-pointer transition-all duration-200 border"
-                :class="selectedJob === job.id
-                  ? 'bg-primary-50 border-primary-300 shadow-sm'
-                  : 'bg-white border-surface-100 hover:border-primary-200 hover:bg-primary-50/30'">
-                <div class="flex items-start justify-between mb-2">
-                  <div class="flex items-center gap-2">
-                    <div :class="job.logoBg" class="w-9 h-9 rounded-lg flex items-center justify-center">
-                      <Icon :icon="job.logo" class="text-lg" :class="job.logoColor" />
-                    </div>
-                    <div>
-                      <h4 class="font-bold text-surface-800 text-sm">{{ job.name }}</h4>
-                      <p class="text-xs text-surface-500">{{ job.company }}</p>
-                    </div>
-                  </div>
-                  <div v-if="selectedJob === job.id" class="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
-                    <Icon icon="mdi:check" class="text-white text-xs" />
-                  </div>
-                </div>
-                <div class="flex items-center justify-between text-xs mt-3">
-                  <span class="text-primary-600 font-bold">{{ job.salary }}</span>
-                  <span class="text-surface-400">{{ job.matchCount }}人匹配</span>
-                </div>
-              </div>
-            </div>
+      <!-- 岗位卡片条（横向滚动） -->
+      <div class="card-mag p-0 overflow-hidden">
+        <div class="px-7 py-4 border-b border-line/80 flex items-center justify-between">
+          <div>
+            <div class="section-label !mb-1 !text-[10.5px]">01A · 我的岗位</div>
+            <h3 class="font-display text-[18px] font-bold text-ink tracking-tight">选择要匹配的岗位</h3>
           </div>
-
-          <!-- 筛选条件 -->
-          <div class="card">
-            <div class="px-6 py-4 border-b border-surface-100 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <Icon icon="mdi:tune-variant" class="text-primary-500 text-lg" />
-                <h3 class="font-bold text-surface-800">筛选条件</h3>
-              </div>
-              <button class="text-xs text-primary-500 font-semibold hover:text-primary-600">清除</button>
+          <div class="flex items-center gap-3 text-[12.5px]">
+            <div class="flex items-center gap-2">
+              <label class="text-ink-3 font-medium">班级</label>
+              <select v-model="classId" class="h-9 rounded-xl border border-line bg-paper px-3 text-ink outline-none focus:border-seal/40 focus:shadow-[0_0_0_4px_rgba(255,90,31,0.08)]">
+                <option v-for="c in classList" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
             </div>
-            <div class="p-5 space-y-6">
-              <!-- 匹配度范围 -->
-              <div>
-                <div class="flex items-center justify-between mb-3">
-                  <label class="text-sm font-semibold text-surface-700">匹配度</label>
-                  <span class="text-sm font-bold text-primary-600">{{ matchRange[0] }}% - {{ matchRange[1] }}%</span>
-                </div>
-                <el-slider v-model="matchRange" range :min="0" :max="100" class="modern-slider" />
-              </div>
-
-              <!-- 学历要求 -->
-              <div>
-                <label class="text-sm font-semibold text-surface-700 block mb-3">学历要求</label>
-                <div class="flex flex-wrap gap-2">
-                  <button v-for="edu in educationList" :key="edu.value"
-                    @click="toggleEducation(edu.value)"
-                    class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                    :class="selectedEducation.includes(edu.value)
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-surface-100 text-surface-600 hover:bg-surface-200'">
-                    {{ edu.label }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- 专业方向 -->
-              <div>
-                <label class="text-sm font-semibold text-surface-700 block mb-3">专业方向</label>
-                <div class="space-y-2">
-                  <label v-for="maj in majorList" :key="maj.value"
-                    class="flex items-center gap-2.5 cursor-pointer group">
-                    <input type="checkbox" :checked="selectedMajor.includes(maj.value)"
-                      @change="toggleMajor(maj.value)"
-                      class="w-4 h-4 rounded border-surface-300 text-primary-500 focus:ring-primary-500" />
-                    <span class="text-sm text-surface-700 group-hover:text-primary-600 transition-colors">
-                      {{ maj.label }}
-                    </span>
-                    <span class="ml-auto text-xs text-surface-400">{{ maj.count }}人</span>
-                  </label>
-                </div>
-              </div>
-
-              <!-- 技能标签 -->
-              <div>
-                <label class="text-sm font-semibold text-surface-700 block mb-3">必备技能</label>
-                <el-select
-                  v-model="selectedSkills"
-                  multiple
-                  filterable
-                  placeholder="选择技能标签"
-                  size="large"
-                  class="w-full modern-select"
-                >
-                  <el-option label="Vue.js" value="Vue.js" />
-                  <el-option label="React" value="React" />
-                  <el-option label="TypeScript" value="TypeScript" />
-                  <el-option label="Node.js" value="Node.js" />
-                  <el-option label="Java" value="Java" />
-                  <el-option label="Python" value="Python" />
-                  <el-option label="MySQL" value="MySQL" />
-                  <el-option label="Redis" value="Redis" />
-                </el-select>
-              </div>
-
-              <!-- 排序方式 -->
-              <div>
-                <label class="text-sm font-semibold text-surface-700 block mb-3">排序方式</label>
-                <el-radio-group v-model="sortBy" class="w-full">
-                  <el-radio-button label="match" class="!w-full !mb-2">
-                    <span class="flex items-center gap-1.5 px-1">
-                      <Icon icon="mdi:percent-outline" class="text-sm" />匹配度优先
-                    </span>
-                  </el-radio-button>
-                  <el-radio-button label="score" class="!w-full !mb-2">
-                    <span class="flex items-center gap-1.5 px-1">
-                      <Icon icon="mdi:star" class="text-sm" />综合评分
-                    </span>
-                  </el-radio-button>
-                  <el-radio-button label="experience" class="!w-full">
-                    <span class="flex items-center gap-1.5 px-1">
-                      <Icon icon="mdi:briefcase-clock" class="text-sm" />项目经验
-                    </span>
-                  </el-radio-button>
-                </el-radio-group>
-              </div>
+            <div v-if="jobInfo?.skill_requirements?.length" class="chip-mag !text-[12px]">
+              门槛维度 {{ jobInfo.skill_requirements.length }} · 权重合计 {{ weightSum }}%
             </div>
           </div>
         </div>
-
-        <!-- 右侧学生排名列表 -->
-        <div class="lg:col-span-9 space-y-8">
-          <!-- Top 3 金牌榜 -->
-          <div class="card overflow-hidden bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50">
-            <div class="px-8 py-5 border-b border-amber-100 flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
-                  <Icon icon="mdi:trophy" class="text-2xl text-white" />
-                </div>
-                <div>
-                  <h3 class="font-bold text-surface-800 text-lg">Top 3 金牌榜</h3>
-                  <p class="text-xs text-surface-500">当前岗位综合匹配前三名</p>
-                </div>
+        <div class="flex gap-4 overflow-x-auto px-7 py-5">
+          <div v-for="j in jobs" :key="j.id"
+               @click="selectJob(j)"
+               class="group flex-shrink-0 w-[300px] rounded-2xl border p-5 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+               :class="activeJobId === j.id
+                 ? 'border-seal/40 bg-seal/[0.06] shadow-[0_10px_30px_-12px_rgba(255,90,31,0.35)]'
+                 : 'border-line bg-paper hover:border-ink-4/30 hover:bg-paper-2/70'">
+            <div v-if="activeJobId === j.id" class="absolute top-4 right-4 w-7 h-7 rounded-full bg-seal text-white flex items-center justify-center text-[14px] shadow-sm">
+              <Icon icon="mdi:check" />
+            </div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-cobalt/15 to-violet-600/15 text-cobalt flex items-center justify-center">
+                <Icon icon="mdi:briefcase-outline" class="text-xl" />
+              </div>
+              <div class="min-w-0">
+                <div class="font-display font-bold text-ink text-[15.5px] truncate">{{ j.title }}</div>
+                <div class="text-[12px] text-ink-3">{{ j.job_type || '全职' }} · {{ j.city || '远程' }} · {{ j.level || 'P5' }}</div>
               </div>
             </div>
-
-            <div class="p-6">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <!-- 第 2 名 -->
-                <div class="relative">
-                  <div class="card bg-white/80 backdrop-blur-sm pt-10 pb-6 px-6 h-full hover:shadow-lg transition-all">
-                    <div class="absolute -top-4 left-1/2 -translate-x-1/2">
-                      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center shadow-lg">
-                        <span class="text-xl font-black text-white">2</span>
-                      </div>
-                    </div>
-                    <div class="text-center">
-                      <div class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-white shadow-md ring-4 ring-white">
-                        {{ top3[1].avatar }}
-                      </div>
-                      <h4 class="font-bold text-surface-800 text-lg">{{ top3[1].name }}</h4>
-                      <p class="text-sm text-surface-500 mb-3">{{ top3[1].major }}</p>
-                      <div class="flex items-center justify-center gap-2 mb-4">
-                        <div class="relative w-16 h-16">
-                          <svg class="w-full h-full transform -rotate-90">
-                            <circle cx="32" cy="32" r="28" stroke="#e5e7eb" stroke-width="5" fill="none" />
-                            <circle cx="32" cy="32" r="28" stroke="url(#silverGradient)" stroke-width="5" fill="none"
-                              stroke-linecap="round" :stroke-dasharray="`${top3[1].match * 1.76} 176`" />
-                            <defs>
-                              <linearGradient id="silverGradient">
-                                <stop offset="0%" stop-color="#94a3b8" />
-                                <stop offset="100%" stop-color="#64748b" />
-                              </linearGradient>
-                            </defs>
-                          </svg>
-                          <div class="absolute inset-0 flex items-center justify-center">
-                            <span class="font-black text-surface-700 text-sm">{{ top3[1].match }}%</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="text-2xl font-black text-slate-600 mb-1">{{ top3[1].score }}分</div>
-                      <p class="text-xs text-surface-500">综合评分</p>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 第 1 名 -->
-                <div class="relative md:-mt-6">
-                  <div class="card bg-white h-full hover:shadow-xl transition-all shadow-xl shadow-amber-200/50 ring-2 ring-amber-300 pt-12 pb-6 px-6">
-                    <div class="absolute -top-5 left-1/2 -translate-x-1/2">
-                      <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center shadow-xl shadow-amber-500/30">
-                        <Icon icon="mdi:crown" class="text-3xl text-white" />
-                      </div>
-                    </div>
-                    <div class="text-center">
-                      <div class="w-24 h-24 rounded-full bg-gradient-to-br from-amber-400 via-orange-400 to-rose-500 mx-auto mb-4 flex items-center justify-center text-4xl font-bold text-white shadow-lg ring-4 ring-amber-100">
-                        {{ top3[0].avatar }}
-                      </div>
-                      <h4 class="font-bold text-surface-800 text-xl mb-1">{{ top3[0].name }}</h4>
-                      <p class="text-sm text-surface-500 mb-4">{{ top3[0].major }}</p>
-                      <div class="flex items-center justify-center gap-2 mb-4">
-                        <div class="relative w-20 h-20">
-                          <svg class="w-full h-full transform -rotate-90">
-                            <circle cx="40" cy="40" r="36" stroke="#fef3c7" stroke-width="6" fill="none" />
-                            <circle cx="40" cy="40" r="36" stroke="url(#goldGradient)" stroke-width="6" fill="none"
-                              stroke-linecap="round" :stroke-dasharray="`${top3[0].match * 2.26} 226`" />
-                            <defs>
-                              <linearGradient id="goldGradient">
-                                <stop offset="0%" stop-color="#f59e0b" />
-                                <stop offset="100%" stop-color="#f97316" />
-                              </linearGradient>
-                            </defs>
-                          </svg>
-                          <div class="absolute inset-0 flex items-center justify-center">
-                            <span class="font-black text-amber-600 text-base">{{ top3[0].match }}%</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="text-3xl font-black text-amber-600 mb-1">{{ top3[0].score }}分</div>
-                      <p class="text-xs text-surface-500">综合评分</p>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 第 3 名 -->
-                <div class="relative">
-                  <div class="card bg-white/80 backdrop-blur-sm pt-10 pb-6 px-6 h-full hover:shadow-lg transition-all">
-                    <div class="absolute -top-4 left-1/2 -translate-x-1/2">
-                      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-300 to-amber-600 flex items-center justify-center shadow-lg">
-                        <span class="text-xl font-black text-white">3</span>
-                      </div>
-                    </div>
-                    <div class="text-center">
-                      <div class="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-white shadow-md ring-4 ring-white">
-                        {{ top3[2].avatar }}
-                      </div>
-                      <h4 class="font-bold text-surface-800 text-lg">{{ top3[2].name }}</h4>
-                      <p class="text-sm text-surface-500 mb-3">{{ top3[2].major }}</p>
-                      <div class="flex items-center justify-center gap-2 mb-4">
-                        <div class="relative w-16 h-16">
-                          <svg class="w-full h-full transform -rotate-90">
-                            <circle cx="32" cy="32" r="28" stroke="#e5e7eb" stroke-width="5" fill="none" />
-                            <circle cx="32" cy="32" r="28" stroke="url(#bronzeGradient)" stroke-width="5" fill="none"
-                              stroke-linecap="round" :stroke-dasharray="`${top3[2].match * 1.76} 176`" />
-                            <defs>
-                              <linearGradient id="bronzeGradient">
-                                <stop offset="0%" stop-color="#d97706" />
-                                <stop offset="100%" stop-color="#b45309" />
-                              </linearGradient>
-                            </defs>
-                          </svg>
-                          <div class="absolute inset-0 flex items-center justify-center">
-                            <span class="font-black text-amber-700 text-sm">{{ top3[2].match }}%</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="text-2xl font-black text-amber-700 mb-1">{{ top3[2].score }}分</div>
-                      <p class="text-xs text-surface-500">综合评分</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div class="flex items-center justify-between text-[12.5px]">
+              <span class="chip-mag !text-seal-dark !bg-seal/10 !border-seal/30 !text-[11.5px]">
+                <Icon icon="mdi:cash" class="mr-1" inline width="12" /> {{ j.salary_range || '面议' }}
+              </span>
+              <span class="text-ink-3 font-mono">
+                <Icon icon="mdi:account-tie-outline" class="mr-1 align-text-bottom" inline width="14" /> {{ j.enterprise_name || '本企业' }}
+              </span>
             </div>
           </div>
-
-          <!-- 学生排名列表 -->
-          <div class="card">
-            <div class="px-8 py-5 border-b border-surface-100 flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div class="w-1.5 h-5 bg-primary-500 rounded-full"></div>
-                <span class="text-lg font-bold text-surface-800">匹配候选人排行</span>
-                <span class="bg-primary-50 text-primary-600 text-xs font-bold px-2.5 py-0.5 rounded-full">
-                  共 {{ studentRanking.length }} 人
-                </span>
-              </div>
-              <div class="flex items-center gap-2 text-sm">
-                <el-input v-model="searchStudent" placeholder="搜索学生..." size="large" class="w-56 modern-input">
-                  <template #prefix>
-                    <Icon icon="mdi:magnify" class="text-surface-400" />
-                  </template>
-                </el-input>
-              </div>
-            </div>
-
-            <div class="p-6 space-y-4">
-              <div v-for="(stu, index) in studentRanking" :key="stu.id"
-                class="p-5 rounded-2xl border border-surface-100 hover:border-primary-200 hover:bg-primary-50/30 hover:shadow-md transition-all duration-300">
-                <div class="flex items-start gap-5">
-                  <!-- 排名 -->
-                  <div class="flex-shrink-0 w-14 text-center">
-                    <div :class="[
-                      'w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-2',
-                      index < 3 ? 'bg-gradient-to-br from-amber-100 to-orange-100' : 'bg-surface-100'
-                    ]">
-                      <template v-if="index === 0">
-                        <Icon icon="mdi:medal" class="text-2xl text-amber-500" />
-                      </template>
-                      <template v-else-if="index === 1">
-                        <Icon icon="mdi:medal" class="text-2xl text-slate-400" />
-                      </template>
-                      <template v-else-if="index === 2">
-                        <Icon icon="mdi:medal" class="text-2xl text-amber-700" />
-                      </template>
-                      <span v-else class="font-black text-surface-500 text-lg">{{ index + 1 }}</span>
-                    </div>
-                  </div>
-
-                  <!-- 头像与信息 -->
-                  <div class="flex-shrink-0">
-                    <div :class="[
-                      'w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold text-white shadow-md',
-                      stu.avatarBg
-                    ]">
-                      {{ stu.avatar }}
-                    </div>
-                  </div>
-
-                  <!-- 基本信息 -->
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2.5 mb-2 flex-wrap">
-                      <h4 class="font-bold text-surface-800 text-lg">{{ stu.name }}</h4>
-                      <span class="text-xs text-surface-400">{{ stu.studentNo }}</span>
-                      <span class="bg-surface-100 text-surface-600 text-xs font-semibold px-2 py-0.5 rounded-full">{{ stu.education }}</span>
-                    </div>
-                    <div class="flex items-center gap-4 text-sm text-surface-600 mb-3 flex-wrap">
-                      <span class="flex items-center gap-1.5">
-                        <Icon icon="mdi:school-outline" class="text-primary-500 text-sm" />
-                        {{ stu.major }}
-                      </span>
-                      <span class="flex items-center gap-1.5">
-                        <Icon icon="mdi:calendar-outline" class="text-primary-500 text-sm" />
-                        {{ stu.grade }}级
-                      </span>
-                      <span class="flex items-center gap-1.5">
-                        <Icon icon="mdi:briefcase-clock-outline" class="text-primary-500 text-sm" />
-                        {{ stu.projectCount }}个项目
-                      </span>
-                    </div>
-                    <!-- 技能标签 -->
-                    <div class="flex flex-wrap gap-1.5">
-                      <span v-for="tag in stu.skills.slice(0, 5)" :key="tag"
-                        class="px-2.5 py-1 bg-primary-50 text-primary-600 rounded-lg text-xs font-semibold">
-                        {{ tag }}
-                      </span>
-                      <span v-if="stu.skills.length > 5"
-                        class="px-2.5 py-1 bg-surface-100 text-surface-500 rounded-lg text-xs font-semibold">
-                        +{{ stu.skills.length - 5 }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- 匹配度环形图 -->
-                  <div class="flex-shrink-0 px-4">
-                    <div class="relative w-20 h-20">
-                      <svg class="w-full h-full transform -rotate-90">
-                        <circle cx="40" cy="40" r="34" stroke="#e5e7eb" stroke-width="6" fill="none" />
-                        <circle cx="40" cy="40" r="34" :stroke="stu.matchColor" stroke-width="6" fill="none"
-                          stroke-linecap="round" :stroke-dasharray="`${stu.match * 2.14} 214`" />
-                      </svg>
-                      <div class="absolute inset-0 flex flex-col items-center justify-center">
-                        <span class="font-black text-xl" :class="stu.matchTextColor">{{ stu.match }}%</span>
-                        <span class="text-[10px] text-surface-400 font-medium">匹配度</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 亮点 / 缺口 -->
-                  <div class="flex-shrink-0 w-56 space-y-2.5 hidden xl:block">
-                    <div class="flex items-start gap-2">
-                      <div class="w-5 h-5 rounded bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Icon icon="mdi:plus" class="text-emerald-600 text-xs font-bold" />
-                      </div>
-                      <div class="min-w-0">
-                        <span class="text-xs font-semibold text-emerald-700">亮点：</span>
-                        <span class="text-xs text-surface-600">{{ stu.highlight }}</span>
-                      </div>
-                    </div>
-                    <div class="flex items-start gap-2">
-                      <div class="w-5 h-5 rounded bg-rose-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Icon icon="mdi:minus" class="text-rose-600 text-xs font-bold" />
-                      </div>
-                      <div class="min-w-0">
-                        <span class="text-xs font-semibold text-rose-700">缺口：</span>
-                        <span class="text-xs text-surface-600">{{ stu.gap }}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 操作按钮 -->
-                  <div class="flex-shrink-0 flex flex-col gap-2">
-                    <button class="px-4 py-2 bg-gradient-to-r from-primary-500 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:shadow-lg transition-all flex items-center gap-1.5 whitespace-nowrap">
-                      <Icon icon="mdi:eye-outline" />
-                      查看详情
-                    </button>
-                    <button class="px-4 py-2 bg-violet-50 text-violet-600 rounded-xl text-sm font-semibold hover:bg-violet-100 transition-colors flex items-center gap-1.5 whitespace-nowrap">
-                      <Icon icon="mdi:message-outline" />
-                      发起邀约
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 加载更多 -->
-            <div class="px-8 pb-8">
-              <button class="w-full py-4 border border-dashed border-surface-200 rounded-2xl text-surface-500 font-semibold text-sm hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50/50 transition-all flex items-center justify-center gap-2">
-                <Icon icon="mdi:chevron-down" />
-                加载更多候选人
-              </button>
-            </div>
+          <div v-if="!jobs.length" class="w-full py-10 text-center text-ink-3 text-[13px]">
+            <Icon icon="mdi:inbox-arrow-down-outline" class="text-4xl opacity-40 mb-2 block mx-auto" />
+            暂无开放岗位，请到「岗位管理」创建。
           </div>
         </div>
       </div>
     </div>
+
+      <!-- 接口错误提示 -->
+      <div v-if="loadError" class="mb-6 rounded-2xl border-2 border-seal/30 bg-seal/[0.06] px-5 py-4 flex items-start gap-3">
+        <Icon icon="mdi:alert-circle-outline" class="text-seal text-xl flex-shrink-0 mt-0.5" />
+        <div class="text-[13.5px] text-seal-dark leading-[1.7] flex-1">{{ loadError }}</div>
+        <button @click="loadJobsAndClasses().then(() => refreshMatch())" class="chip-mag !text-[12px] !py-1 !px-3 flex-shrink-0">
+          <Icon icon="mdi:refresh" class="mr-1" inline width="12" /> 重试
+        </button>
+      </div>
+
+    <!-- ============ 主体：单一统一大卡片（仅 TOP 候选人） ============ -->
+    <section class="em-unified">
+      <!-- 头部：标题 + 搜索 + 统计 -->
+      <div class="emu-head">
+        <div class="emu-head-l">
+          <h2 class="emu-title">
+            <Icon icon="mdi:medal-outline" class="emu-ic emu-ic-violet" />
+            TOP {{ topRows.length }} 匹配候选人
+            <span class="chip-mag !text-[12px] ml-2">{{ classInfo?.name || '班级' }} × {{ jobInfo?.title || '岗位' }}</span>
+          </h2>
+          <div class="text-[12.5px] text-ink-4 mt-1.5">
+            均值 <b class="font-display text-ink text-[15px] mx-1">{{ avgScore }}</b>
+            <span class="mx-2 opacity-40">·</span>
+            ≥80 分 <b class="font-display text-jade-dark text-[15px] mx-1">{{ gt80Count }}</b> 人
+            <span class="mx-2 opacity-40">·</span>
+            点击「画像」查看能力对标 / TOP 5 岗位匹配详情
+          </div>
+        </div>
+        <div class="emu-head-r">
+          <!-- 搜索框 -->
+          <div class="relative w-64">
+            <Icon icon="mdi:magnify" class="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-4" />
+            <input v-model="keyword" placeholder="搜索学生姓名 / 学号…"
+                   class="w-full h-10 rounded-xl border border-line bg-paper px-10 font-body text-[13.5px] text-ink outline-none focus:border-2 focus:border-seal/40 focus:shadow-[0_0_0_4px_rgba(255,90,31,0.08)] transition-all" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 分区虚线 -->
+      <div class="emu-divider"></div>
+
+      <!-- 候选人列表（仅展示排名，不再做 tab 切换） -->
+      <div class="emu-section">
+        <div v-if="loading" class="py-16 text-center text-ink-3 text-sm">
+          <Icon icon="mdi:loading" class="text-4xl animate-spin mb-3 block mx-auto opacity-60" />
+          正在根据班级评价数据 × 岗位门槛计算匹配分…
+        </div>
+        <div v-else-if="!topRows.length" class="py-16 text-center">
+          <div class="w-20 h-20 rounded-2xl bg-line/50 flex items-center justify-center mx-auto mb-4">
+            <Icon icon="mdi:radar" class="text-4xl text-ink-4" />
+          </div>
+          <p class="font-sub font-semibold text-ink-2 text-[15px] mb-1">暂无可匹配的学生</p>
+          <p class="text-[12.5px] text-ink-4">请选择岗位 + 班级后，点「重新匹配」开始计算。若该班级无评价数据，可先去评价学生。</p>
+        </div>
+        <div v-else class="emu-scroll px-2 py-2">
+          <div v-for="(r, idx) in topRows" :key="r.student_id || r.id"
+               @click="selectStudent(r)"
+               class="emu-row rounded-2xl p-5 border cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative group"
+               :class="{
+                 'border-seal/40 bg-seal/[0.06] shadow-[0_10px_30px_-12px_rgba(255,90,31,0.35)] z-10': activeStudentId === (r.student_id || r.id),
+                 'border-line bg-paper hover:border-ink-4/30 hover:bg-paper-2/70': activeStudentId !== (r.student_id || r.id)
+               }">
+            <!-- 第1/2/3名 金色徽章 -->
+            <div v-if="idx < 3" class="absolute -top-3 -left-2">
+              <div class="w-10 h-10 rounded-2xl shadow-lg flex items-center justify-center text-white font-display font-black"
+                   :class="[
+                     'bg-gradient-to-br',
+                     idx === 0 ? 'from-amber-400 via-orange-400 to-rose-500' : idx === 1 ? 'from-slate-300 to-slate-500' : 'from-orange-300 to-amber-600'
+                   ]">
+                <Icon v-if="idx === 0" icon="mdi:crown" class="text-xl" />
+                <template v-else>{{ idx + 1 }}</template>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-4">
+              <!-- 头像 + 环形匹配度 -->
+              <div class="flex-shrink-0 flex items-center gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cobalt to-violet-600 text-white font-bold font-display text-xl flex items-center justify-center shadow-sm">
+                  {{ initialOfRow(r) }}
+                </div>
+                <div class="relative w-16 h-16">
+                  <svg viewBox="0 0 100 100" class="w-full h-full transform -rotate-90">
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" class="text-line" stroke-width="8" />
+                    <circle cx="50" cy="50" r="42" fill="none"
+                            :stroke="matchColor(r.match_score)" stroke-width="8" stroke-linecap="round"
+                            :stroke-dasharray="`${Math.round((r.match_score||0) * 2.64)} 264`" />
+                  </svg>
+                  <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <div class="font-display text-[19px] font-black leading-none" :class="matchTextColor(r.match_score)">
+                      {{ Math.round(r.match_score || 0) }}
+                    </div>
+                    <div class="text-[9px] font-sub uppercase tracking-[0.15em] text-ink-4 mt-0.5">match</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 基本信息 -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <h4 class="font-display font-bold text-ink text-[17px] tracking-tight truncate">
+                    {{ r.real_name || r.name || `学生 #${r.student_id || r.id}` }}
+                  </h4>
+                  <span v-if="r.user_number" class="text-[11.5px] font-mono text-ink-3">#{{ r.user_number }}</span>
+                  <span v-if="r.class_name" class="chip-mag !py-0.5 !px-2 !text-[10.5px] !font-medium">
+                    {{ r.class_name }}
+                  </span>
+                  <span v-if="r.must_failed_count" class="chip-mag !py-0.5 !px-2 !text-[10.5px] !bg-seal/12 !text-seal-dark !border-seal/30">
+                    ❌ 必选未达标 {{ r.must_failed_count }}
+                  </span>
+                </div>
+
+                <!-- 5 行维度：门槛 vs 学生得分 -->
+                <div class="space-y-1.5 mt-3">
+                  <div v-for="d in (r.dimension_breakdown || []).slice(0, 5)" :key="d.name" class="flex items-center gap-3">
+                    <div class="w-24 shrink-0 flex items-center gap-1.5 min-w-0">
+                      <Icon v-if="d.must && !d.passed" icon="mdi:alert-octagon" class="text-seal text-[13px]" />
+                      <Icon v-else-if="d.must && d.passed" icon="mdi:shield-check-outline" class="text-jade-dark text-[13px]" />
+                      <Icon v-else-if="!d.must && d.passed" icon="mdi:check-circle-outline" class="text-cobalt text-[13px]" />
+                      <Icon v-else icon="mdi:minus-circle-outline" class="text-amber-dark text-[13px]" />
+                      <span class="text-[12px] text-ink-2 font-medium truncate">{{ d.name }}</span>
+                    </div>
+                    <div class="flex-1 relative h-5">
+                      <!-- 门槛线 -->
+                      <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-cobalt"
+                           :style="{ left: `${d.threshold ?? 60}%` }"></div>
+                      <!-- 学生条 -->
+                      <div class="absolute top-1 bottom-1 left-0 rounded-full"
+                           :class="(d.passed ? 'bg-gradient-to-r from-jade to-emerald-500' : 'bg-gradient-to-r from-amber to-seal')"
+                           :style="{ width: `${Math.min(100, d.student_score ?? 0)}%` }"></div>
+                    </div>
+                    <span class="font-mono text-[11.5px] text-ink-2 w-20 text-right">
+                      <span :class="d.passed ? 'text-jade-dark font-bold' : 'text-seal-dark font-bold'">{{ Math.round(d.student_score ?? 0) }}</span>
+                      <span class="text-ink-4 opacity-70"> / {{ Math.round(d.threshold ?? 60) }}</span>
+                    </span>
+                  </div>
+                  <div v-if="(r.dimension_breakdown||[]).length === 0" class="text-[12px] text-ink-3 italic">该岗位无维度门槛配置</div>
+                </div>
+
+                <!-- 亮点 + 缺口 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 mt-4">
+                  <div v-if="r.highlights?.length" class="rounded-xl p-3 bg-jade/[0.08] border border-jade/20">
+                    <div class="flex items-center gap-1.5 text-[11.5px] font-sub font-bold text-jade-dark uppercase tracking-[0.1em] mb-1.5">
+                      <Icon icon="mdi:plus-circle" inline width="14" /> HIGHLIGHT · 亮点
+                    </div>
+                    <div class="text-[12px] text-ink leading-snug">
+                      <template v-for="(h, i) in r.highlights.slice(0,2)" :key="h.name">
+                        <span class="font-bold text-jade-dark">{{ h.name }}</span> 超门槛 <span class="font-mono font-bold">+{{ h.delta }}</span> 分
+                        <span class="text-ink-4">（{{ h.student_score }}/{{ h.threshold }}）</span>{{ i < Math.min(r.highlights.length, 2) - 1 ? '，' : '' }}
+                      </template>
+                    </div>
+                  </div>
+                  <div v-if="r.gaps?.length" class="rounded-xl p-3 bg-seal/[0.08] border border-seal/20">
+                    <div class="flex items-center gap-1.5 text-[11.5px] font-sub font-bold text-seal-dark uppercase tracking-[0.1em] mb-1.5">
+                      <Icon icon="mdi:minus-circle" inline width="14" /> GAP · 缺口
+                    </div>
+                    <div class="text-[12px] text-ink leading-snug">
+                      <template v-for="(g, i) in r.gaps.slice(0,2)" :key="g.name">
+                        <span :class="g.level==='major' ? 'font-bold text-seal-dark' : 'font-semibold text-amber-dark'">{{ g.name }}</span>
+                        <span class="text-ink-4"> 差</span> <span class="font-mono font-bold">{{ Math.abs(g.delta) }}</span> 分
+                        <span class="text-ink-4">（{{ g.student_score }}/{{ g.threshold }}）</span>{{ i < Math.min(r.gaps.length, 2) - 1 ? '，' : '' }}
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右操作 -->
+              <div class="flex-shrink-0 flex flex-col gap-2">
+                <button @click.stop="$router.push(`/app/enterprise/student/${r.student_id || r.id}`)"
+                        class="btn-mag btn-mag-primary px-3 py-2 text-[12.5px] whitespace-nowrap">
+                  <Icon icon="mdi:eye-outline" class="mr-1" inline width="14" /> 画像
+                </button>
+                <button @click.stop="invite(r)"
+                        class="btn-mag btn-mag-ghost px-3 py-2 text-[12.5px] whitespace-nowrap">
+                  <Icon icon="mdi:message-outline" class="mr-1" inline width="14" /> 邀约
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
+import axios from 'axios'
+import { API_BASE } from '../config'
 
-const selectedJob = ref(1)
-const matchRange = ref([60, 100])
-const selectedEducation = ref(['本科', '硕士'])
-const selectedMajor = ref(['软件工程', '计算机科学'])
-const selectedSkills = ref<string[]>(['Vue.js', 'TypeScript'])
-const sortBy = ref('match')
-const searchStudent = ref('')
+const router = useRouter()
 
-const jobList = ref([
-  {
-    id: 1,
-    name: '全栈开发工程师',
-    company: '字节跳动',
-    salary: '25-45K',
-    matchCount: 48,
-    logo: 'mdi:language-css3',
-    logoBg: 'bg-gradient-to-br from-blue-100 to-blue-200',
-    logoColor: 'text-blue-600'
-  },
-  {
-    id: 2,
-    name: '高级前端工程师',
-    company: '腾讯科技',
-    salary: '20-40K',
-    matchCount: 36,
-    logo: 'mdi:vuejs',
-    logoBg: 'bg-gradient-to-br from-emerald-100 to-emerald-200',
-    logoColor: 'text-emerald-600'
-  },
-  {
-    id: 3,
-    name: '后端开发工程师',
-    company: '阿里巴巴',
-    salary: '22-42K',
-    matchCount: 52,
-    logo: 'mdi:language-java',
-    logoBg: 'bg-gradient-to-br from-orange-100 to-orange-200',
-    logoColor: 'text-orange-600'
-  }
-])
+type JobT = any
+type ClassT = { id: number; name: string }
+type MatchRow = any
 
-const educationList = [
-  { label: '大专', value: '大专' },
-  { label: '本科', value: '本科' },
-  { label: '硕士', value: '硕士' },
-  { label: '博士', value: '博士' }
-]
+const loading = ref(false)
+const loadError = ref('')
+const keyword = ref('')
+const jobs = ref<JobT[]>([])
+const classList = ref<ClassT[]>([])
+const classId = ref<number | null>(null)
+const activeJobId = ref<number | null>(null)
+const jobInfo = ref<JobT | null>(null)
+const classInfo = ref<ClassT | null>(null)
+const allRows = ref<MatchRow[]>([])
+const activeStudentId = ref<number | null>(null)
 
-const majorList = [
-  { label: '软件工程', value: '软件工程', count: 86 },
-  { label: '计算机科学', value: '计算机科学', count: 72 },
-  { label: '数据科学', value: '数据科学', count: 38 },
-  { label: '人工智能', value: '人工智能', count: 29 },
-  { label: '网络工程', value: '网络工程', count: 24 }
-]
+const weightSum = computed(() => {
+  const reqs = jobInfo.value?.skill_requirements || []
+  return Math.round(reqs.reduce((s: number, r: any) => s + (Number(r.weight) || 0), 0))
+})
 
-const toggleEducation = (val: string) => {
-  const idx = selectedEducation.value.indexOf(val)
-  if (idx > -1) selectedEducation.value.splice(idx, 1)
-  else selectedEducation.value.push(val)
+const topRows = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  return allRows.value.filter(r => {
+    if (!kw) return true
+    return [
+      r.real_name, r.name, r.user_number, r.username, r.class_name
+    ].map(x => String(x || '').toLowerCase()).some(s => s.includes(kw))
+  })
+})
+
+const avgScore = computed(() => {
+  if (!allRows.value.length) return 0
+  const sum = allRows.value.reduce((s, r) => s + (Number(r.match_score) || 0), 0)
+  return Math.round(sum / allRows.value.length)
+})
+
+const gt80Count = computed(() => allRows.value.filter(r => (r.match_score || 0) >= 80).length)
+
+/* ========= Helpers ========= */
+function initialOfRow(r: any) {
+  return (r?.real_name || r?.name || '学').slice(0, 1)
+}
+function matchColor(s: any) {
+  const v = Number(s); if (isNaN(v)) return '#94A3B8'
+  if (v >= 85) return '#11A367'
+  if (v >= 70) return '#2563EB'
+  if (v >= 60) return '#F59E0B'
+  return '#FF5A1F'
+}
+function matchTextColor(s: any) {
+  const v = Number(s); if (isNaN(v)) return 'text-ink-4'
+  if (v >= 85) return 'text-jade-dark'
+  if (v >= 70) return 'text-cobalt'
+  if (v >= 60) return 'text-amber-dark'
+  return 'text-seal-dark'
+}
+function invite(r: any) {
+  const name = r?.real_name || r?.name || '该学生'
+  alert(`已向 ${name}（学号 ${r?.user_number || '-'}）发送邀约，演示模式下不会真的发消息。`)
 }
 
-const toggleMajor = (val: string) => {
-  const idx = selectedMajor.value.indexOf(val)
-  if (idx > -1) selectedMajor.value.splice(idx, 1)
-  else selectedMajor.value.push(val)
+/* ========= Actions ========= */
+async function loadJobsAndClasses() {
+  const token = localStorage.getItem('token') || ''
+  const headers: any = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  let errJobs: any = null, errCls: any = null
+  try {
+    const jr = await axios.get(`${API_BASE}/api/enterprise/jobs`, { headers, params: { status: 'open', page_size: 50 } })
+    const jlist: any[] = (jr.data as any)?.data?.list || (jr.data as any)?.list || jr.data || []
+    jobs.value = jlist.filter(Boolean)
+    if (!activeJobId.value && jobs.value[0]) selectJob(jobs.value[0])
+  } catch (e) { errJobs = e }
+  try {
+    const cr = await axios.get(`${API_BASE}/api/enterprise/classes`, { headers })
+    const cl: any[] = (cr.data as any)?.data?.list || (cr.data as any)?.list || (Array.isArray(cr.data) ? cr.data : [])
+    classList.value = cl.filter(Boolean)
+  } catch (e) { errCls = e }
+  if (errJobs || errCls) {
+    const msgs: string[] = []
+    if (errJobs) msgs.push('岗位列表：' + (errJobs?.response?.data?.detail || errJobs?.message || '请求失败'))
+    if (errCls)  msgs.push('班级列表：' + (errCls?.response?.data?.detail  || errCls?.message  || '请求失败'))
+    loadError.value = '初始化失败：' + msgs.join('；') + '（请启动后端服务，并使用企业导师账号登录）'
+  } else {
+    loadError.value = ''
+  }
+  if (!classId.value && classList.value[0]) classId.value = classList.value[0].id
 }
 
-const top3 = ref([
-  { name: '李娜', avatar: '李', major: '软件工程', match: 96, score: 95.8 },
-  { name: '张伟', avatar: '张', major: '计算机科学', match: 93, score: 92.5 },
-  { name: '王强', avatar: '王', major: '软件工程', match: 91, score: 90.2 }
-])
-
-const studentRanking = ref([
-  {
-    id: 1,
-    name: '李娜',
-    avatar: '李',
-    avatarBg: 'bg-gradient-to-br from-rose-400 to-pink-500',
-    studentNo: '2024002',
-    education: '硕士',
-    major: '软件工程',
-    grade: '2022',
-    projectCount: 8,
-    match: 96,
-    matchColor: '#10b981',
-    matchTextColor: 'text-emerald-600',
-    score: 95.8,
-    skills: ['Vue.js', 'React', 'TypeScript', 'Node.js', 'MySQL', 'Redis', 'Docker'],
-    highlight: '全栈项目经验丰富，有大厂实习经历',
-    gap: '微服务架构经验较少'
-  },
-  {
-    id: 2,
-    name: '张伟',
-    avatar: '张',
-    avatarBg: 'bg-gradient-to-br from-blue-400 to-indigo-500',
-    studentNo: '2024001',
-    education: '本科',
-    major: '计算机科学',
-    grade: '2022',
-    projectCount: 6,
-    match: 93,
-    matchColor: '#3b82f6',
-    matchTextColor: 'text-blue-600',
-    score: 92.5,
-    skills: ['Vue.js', 'TypeScript', 'Webpack', 'JavaScript', 'CSS3'],
-    highlight: '前端技术栈扎实，工程化能力强',
-    gap: '后端开发经验待补充'
-  },
-  {
-    id: 3,
-    name: '王强',
-    avatar: '王',
-    avatarBg: 'bg-gradient-to-br from-emerald-400 to-teal-500',
-    studentNo: '2024003',
-    education: '本科',
-    major: '软件工程',
-    grade: '2022',
-    projectCount: 7,
-    match: 91,
-    matchColor: '#0ea5e9',
-    matchTextColor: 'text-sky-600',
-    score: 90.2,
-    skills: ['Java', 'Spring Boot', 'MySQL', 'Redis', 'RabbitMQ'],
-    highlight: 'Java后端功底深厚，高并发项目经验',
-    gap: '前端基础相对薄弱'
-  },
-  {
-    id: 4,
-    name: '刘洋',
-    avatar: '刘',
-    avatarBg: 'bg-gradient-to-br from-violet-400 to-purple-500',
-    studentNo: '2024004',
-    education: '本科',
-    major: '数据科学',
-    grade: '2022',
-    projectCount: 5,
-    match: 88,
-    matchColor: '#8b5cf6',
-    matchTextColor: 'text-violet-600',
-    score: 87.6,
-    skills: ['Python', 'TensorFlow', 'Pandas', 'NumPy', 'SQL'],
-    highlight: '数据分析与机器学习能力出色',
-    gap: 'Web开发经验需要积累'
-  },
-  {
-    id: 5,
-    name: '陈静',
-    avatar: '陈',
-    avatarBg: 'bg-gradient-to-br from-orange-400 to-red-500',
-    studentNo: '2024005',
-    education: '硕士',
-    major: '人工智能',
-    grade: '2021',
-    projectCount: 6,
-    match: 85,
-    matchColor: '#f97316',
-    matchTextColor: 'text-orange-600',
-    score: 85.3,
-    skills: ['Python', 'PyTorch', 'NLP', 'CV', '算法'],
-    highlight: '算法能力强，有顶会论文发表',
-    gap: '工程实践经验不足'
+function selectJob(j: JobT) {
+  activeJobId.value = j.id
+  jobInfo.value = {
+    ...j,
+    skill_requirements: normalizeReqs(j.skill_requirements)
   }
-])
+}
+
+function normalizeReqs(reqs: any) {
+  if (!reqs) return []
+  if (typeof reqs === 'string') {
+    try { reqs = JSON.parse(reqs) } catch { return String(reqs).split(/[,，;；]/).map(n => ({ name: n.trim(), weight: 20, threshold: 60, must: false })) }
+  }
+  if (Array.isArray(reqs)) {
+    return reqs.map(r => typeof r === 'string'
+      ? { name: r, weight: 20, threshold: 60, must: false }
+      : { name: r?.name, weight: Number(r?.weight) || 20, threshold: Number(r?.threshold) || 60, must: !!r?.must }
+    ).filter(r => r.name)
+  }
+  return []
+}
+
+function selectStudent(r: MatchRow) {
+  activeStudentId.value = r.student_id || r.id
+}
+
+async function refreshMatch() {
+  if (!activeJobId.value || !classId.value) {
+    alert('请先选择岗位和班级')
+    return
+  }
+  loading.value = true
+  loadError.value = ''
+  const token = localStorage.getItem('token') || ''
+  const headers: any = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  try {
+    const { data } = await axios.get(`${API_BASE}/api/job-match/batch-class`, {
+      headers,
+      params: { class_id: classId.value, job_id: activeJobId.value, top_n: 50, min_score: 0 }
+    })
+    const payload: any = data
+    classInfo.value = payload.class || null
+    jobInfo.value = payload.job ? { ...payload.job, skill_requirements: normalizeReqs(payload.job.skill_requirements) } : jobInfo.value
+    allRows.value = payload.list || []
+  } catch (e: any) {
+    allRows.value = []
+    const msg = e?.response?.data?.detail || e?.message || '请求失败'
+    loadError.value = `匹配榜单加载失败：${msg}（请确认后端服务已启动，当前企业账号已绑定班级/发布岗位）`
+  } finally {
+    loading.value = false
+  }
+}
+
+async function exportReport() {
+  if (!activeJobId.value || !classId.value) { alert('请先选择岗位和班级'); return }
+  const token = localStorage.getItem('token') || ''
+  const headers: any = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  try {
+    const { data } = await axios.get(`${API_BASE}/api/job-match/generate-report`, {
+      headers, params: { class_id: classId.value, job_id: activeJobId.value, top_n: 50, fmt: 'text' }
+    })
+    const text = data?.report_text || data || '（无报告内容）'
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `岗位匹配报告_${classInfo.value?.name || 'class'}_${jobInfo.value?.title || 'job'}_${Date.now()}.txt`
+    document.body.appendChild(a); a.click(); a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    alert('报告生成失败：' + (e?.message || '未知错误'))
+  }
+}
+
+/* ========= Init + Watch ========= */
+watch([activeJobId, classId], () => {
+  if (activeJobId.value && classId.value) refreshMatch()
+})
+onMounted(async () => {
+  await loadJobsAndClasses()
+  if (activeJobId.value && classId.value) refreshMatch()
+})
 </script>
 
 <style scoped>
-.modern-select :deep(.el-select__wrapper) {
-  border-radius: 0.75rem;
-  box-shadow: none;
-  border: 1px solid #e5e7eb;
+.card-mag select, .card-mag input, .card-mag button { font-family: inherit; }
+
+/* ========= 岗位匹配 · 统一卡片 ======== */
+.em-unified {
+  background: var(--paper, #F4F1EA);
+  border: 1px solid var(--line, #DED6C7);
+  border-radius: 16px;
+  padding: 22px 26px 26px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
 }
-.modern-input :deep(.el-input__wrapper) {
-  border-radius: 0.75rem;
-  box-shadow: none;
-  border: 1px solid #e5e7eb;
+
+/* 头部 */
+.emu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
 }
-.modern-slider :deep(.el-slider__runway) {
-  height: 6px;
+.emu-title {
+  font-family: "Noto Serif SC", "Georgia", "SimSun", serif;
+  font-weight: 900;
+  font-size: 26px;
+  letter-spacing: 0.01em;
+  color: var(--ink, #2C2418);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
-.modern-slider :deep(.el-slider__bar) {
-  height: 6px;
-  background: linear-gradient(90deg, #165DFF 0%, #4F46E5 100%);
+.emu-ic { width: 26px; height: 26px; }
+.emu-ic-violet { color: #7C3AED; }
+.emu-head-r {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
-.modern-slider :deep(.el-slider__button) {
-  width: 18px;
-  height: 18px;
-  border: 3px solid #165DFF;
+
+/* 虚线分区 */
+.emu-divider {
+  margin: 18px 0 4px;
+  border-top: 1px dashed rgba(222,214,199,0.9);
 }
-:deep(.el-radio-button__inner) {
-  width: 100%;
-  padding: 12px 15px;
-  border-radius: 0.75rem !important;
-  border: 1px solid #e5e7eb !important;
-  margin-bottom: 4px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
-  transition: all 0.2s;
+
+/* 每个 section */
+.emu-section { padding: 12px 4px 4px; }
+
+/* 候选人列表滚动区 */
+.emu-scroll {
+  max-height: 72vh;
+  overflow-y: auto;
 }
-:deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  background: linear-gradient(135deg, #165DFF 0%, #4F46E5 100%);
-  border-color: transparent !important;
-  color: white;
-  font-weight: 600;
-  box-shadow: 0 4px 12px rgba(22, 93, 255, 0.25);
+.emu-scroll::-webkit-scrollbar { width: 8px; }
+.emu-scroll::-webkit-scrollbar-thumb { background: rgba(222,214,199,0.8); border-radius: 99px; }
+.emu-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* 紧凑小屏 */
+@media (max-width: 900px) {
+  .em-unified { padding: 18px 16px 20px; }
+  .emu-title { font-size: 21px; }
+  .emu-head-r { width: 100%; justify-content: flex-start; }
 }
 </style>

@@ -4,10 +4,12 @@ import MainLayout from '../layout/MainLayout.vue'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    // 1. 根路径 → 直接进入系统首页（MainLayout + Dashboard）
+    // 1. 根路径 → 初始页面为 Landing.vue（未登录直接展示品牌页；已登录则在 beforeEach 内跳工作台）
     {
       path: '/',
-      redirect: '/app'
+      name: 'root',
+      component: () => import('../views/Landing.vue'),
+      meta: { title: '智讯云 · 实训教学 AI 评价' }
     },
 
     // 2. 登录页
@@ -16,6 +18,13 @@ const router = createRouter({
       name: 'login',
       component: () => import('../views/Login.vue'),
       meta: { title: '登录' }
+    },
+    // 2.5 Landing Page（保留独立 /landing 路径，便于外链）
+    {
+      path: '/landing',
+      name: 'landing',
+      component: () => import('../views/Landing.vue'),
+      meta: { title: '智讯云 · 实训教学 AI 评价' }
     },
 
     // 3. 系统内部（所有原有功能都在这里，路径前面加了 /app）
@@ -58,6 +67,12 @@ const router = createRouter({
           name: 'my-scores',
           component: () => import('../views/MyScores.vue'),
           meta: { title: '我的成绩', role: 'student' }
+        },
+        {
+          path: 'interview-invitations',
+          name: 'interview-invitations',
+          component: () => import('../views/InterviewInvitations.vue'),
+          meta: { title: '面试邀约', role: 'student' }
         },
         {
           path: 'class-manage',
@@ -126,6 +141,12 @@ const router = createRouter({
           name: 'enterprise-matching',
           component: () => import('../views/EnterpriseMatching.vue'),
           meta: { title: '岗位匹配', role: 'enterprise' }
+        },
+        {
+          path: 'enterprise/student/:studentId',
+          name: 'enterprise-student-profile',
+          component: () => import('../views/EnterpriseStudentProfile.vue'),
+          meta: { title: '学生画像', role: 'enterprise' }
         }
       ]
     }
@@ -137,20 +158,39 @@ router.beforeEach((to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - 智能实训评价系统` : '智能实训评价系统'
 
+  // 读取当前登录用户（只做一次 JSON 解析，下面多次复用）
+  const rawUser = localStorage.getItem('user')
+  let user: any = null
+  if (rawUser) {
+    try { user = JSON.parse(rawUser) } catch { user = null }
+  }
+
+  // 根路径分流：已登录按角色跳对应工作台，未登录直接渲染 Landing
+  const isRoot = to.path === '/' || to.fullPath === '/'
+  if (isRoot) {
+    if (user?.role === 'enterprise') return next('/app/enterprise/dashboard')
+    if (user) return next('/app')
+    // 未登录：根路径本身就是 Landing 组件，直接渲染（避免多余重定向）
+    return next()
+  }
+
+  // /app（系统首页）：企业角色直接跳企业总览，不再进入教学首页
+  if (to.path === '/app' && user?.role === 'enterprise') {
+    return next('/app/enterprise/dashboard')
+  }
+
   const requiredRole = to.meta?.role as string | undefined
   if (!requiredRole) {
     next()
     return
   }
 
-  const raw = localStorage.getItem('user')
-  if (!raw) {
+  if (!user) {
     next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }
 
   try {
-    const user = JSON.parse(raw)
     if (user.role === requiredRole) {
       next()
     } else if (requiredRole === 'teacher' && user.role === 'enterprise') {

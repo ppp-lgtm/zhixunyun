@@ -107,27 +107,14 @@ body {
   line-height: 1.6;
   color: var(--ink);
   background-color: var(--paper);
-  /* 纸张网格底纹 + 对角柔光晕 */
-  background-image:
-    radial-gradient(1200px 600px at 10% -10%, rgba(61, 90, 254, .06), transparent 60%),
-    radial-gradient(900px 500px at 95% 10%, rgba(255, 90, 31, .07), transparent 60%),
-    linear-gradient(to right, var(--line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
-  background-size: auto, auto, 24px 24px, 24px 24px;
-  background-attachment: fixed;
+  background-image: none;
   letter-spacing: -0.005em;
 }
 
-/* 颗粒噪点叠层（SVG 内联，无外部资源），multiply 模拟新闻纸纹理 */
+/* 移除噪点叠层，确保纯色背景 */
 body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  opacity: .045;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.06  0 0 0 0 0.07  0 0 0 0 0.1  0 0 0 0.8 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  content: none;
+  display: none;
 }
 
 /* 让 app 主容器在噪点之上 */
@@ -173,7 +160,7 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
    REUSABLE COMPONENT CLASSES  (杂志-纸感)
    ═══════════════════════════════════════════ */
 @layer components {
-  /* ── Section Label: 绯红细横线 + 小大写 ── */
+  /* ── Section Label: 绯红小大写（移除了左边横线装饰）── */
   .section-label {
     font-family: var(--ff-sub);
     font-size: 12px;
@@ -184,12 +171,6 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
     align-items: center;
     gap: 10px;
     margin-bottom: 14px;
-  }
-  .section-label::before {
-    content: "";
-    width: 28px;
-    height: 2px;
-    background: var(--seal);
   }
 
   /* ── Chip: 胶囊导航 / 分类标签 ── */
@@ -218,6 +199,57 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
   }
   .chip.active b { color: var(--color-primary-light); }
 
+  /* chip-mag：杂志化 Chip 变体（企业首页等页面广泛使用） */
+  .chip-mag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--paper-2);
+    font-family: var(--ff-sub);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-3);
+    line-height: 1.5;
+    letter-spacing: .01em;
+    transition: all .2s ease;
+  }
+  .chip-mag:hover { background: #fff; border-color: var(--seal); color: var(--ink); }
+
+  /* chip 语义色变体 */
+  .chip-jade {
+    background: rgba(29,185,85,0.10);
+    color: var(--jade-dark);
+    border-color: rgba(29,185,85,0.30);
+  }
+  .chip-seal {
+    background: rgba(255,90,31,0.10);
+    color: var(--seal-dark);
+    border-color: rgba(255,90,31,0.30);
+  }
+  .chip-violet {
+    background: rgba(124,58,237,0.10);
+    color: #4C1D95;
+    border-color: rgba(124,58,237,0.30);
+  }
+  .chip-cobalt {
+    background: rgba(61,90,254,0.10);
+    color: var(--cobalt-dark);
+    border-color: rgba(61,90,254,0.30);
+  }
+  .chip-amber {
+    background: rgba(244,183,64,0.12);
+    color: var(--amber-dark);
+    border-color: rgba(244,183,64,0.35);
+  }
+  .chip-ink {
+    background: rgba(15,17,21,0.06);
+    color: var(--ink-2);
+    border-color: rgba(15,17,21,0.16);
+  }
+
   /* ── Tag: 小状态胶囊 (JetBrains Mono 号) ── */
   .tag {
     display: inline-flex;
@@ -237,24 +269,15 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
   .tag.co    { background: var(--cobalt-soft); color: var(--cobalt-dark); border-color: #B8C4F5; }
   .tag.ac    { background: var(--seal-soft);   color: var(--seal-dark);   border-color: #F4B797; }
 
-  /* ── Card: 杂志纸卡（半透明白 + 顶边渐变条）── */
+  /* ── Card: 杂志纸卡（纯色化，移除了顶部渐变条）── */
   .card-mag {
-    background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.78));
+    background: #FFFFFF;
     border: 1px solid var(--line);
     border-radius: var(--r-lg);
     padding: 22px;
     box-shadow: var(--shadow-2);
-    backdrop-filter: blur(6px);
     position: relative;
     overflow: hidden;
-  }
-  .card-mag::after {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--seal), transparent 60%);
-    opacity: .7;
   }
   .card-mag .head {
     display: flex;
@@ -264,22 +287,14 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
     gap: 12px;
   }
 
-  /* ── 兼容旧页面用到的 .card/.card-hover/.card-active：做一个过渡别名层 ── */
+  /* ── 兼容旧页面用到的 .card/.card-hover/.card-active：做一个过渡别名层（同样移除渐变顶条）── */
   .card {
     @apply border rounded-3xl p-6 transition-all duration-300;
-    background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.78));
+    background: #FFFFFF;
     border-color: var(--line);
     box-shadow: var(--shadow-2);
     position: relative;
     overflow: hidden;
-  }
-  .card::after {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--seal), transparent 60%);
-    opacity: .7;
   }
   .card-hover { cursor: pointer; }
   .card-hover:hover { transform: translateY(-4px); box-shadow: var(--shadow-3); }
@@ -287,7 +302,7 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
     transform: translateY(-2px);
     box-shadow: 0 0 40px -10px rgba(255, 90, 31, 0.35);
     border-color: #F4B797;
-    background: linear-gradient(180deg, #FFFBF7, rgba(255,255,255,.9));
+    background: #FFFFFF;
   }
 
   /* ── Buttons: 杂志药丸风 ── */
@@ -308,8 +323,48 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
     transition: transform .2s ease, box-shadow .2s ease, background .2s;
   }
   .btn-mag:hover { transform: translateY(-1px); box-shadow: var(--shadow-3); }
-  .btn-mag.ghost  { background: transparent; color: var(--ink); }
-  .btn-mag.accent { background: var(--seal); border-color: var(--seal); }
+  .btn-mag:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* 语义化变体：btn-mag-ghost / btn-mag-primary / btn-mag-secondary / btn-mag-accent */
+  .btn-mag-ghost,
+  .btn-mag.ghost {
+    background: transparent !important;
+    color: var(--ink) !important;
+    border-color: var(--line) !important;
+    box-shadow: none !important;
+  }
+  .btn-mag-ghost:hover,
+  .btn-mag.ghost:hover {
+    background: var(--paper-2) !important;
+    border-color: var(--seal) !important;
+    color: var(--ink) !important;
+  }
+  .btn-mag-primary {
+    background: linear-gradient(135deg, #FF8A5C 0%, var(--seal) 55%, var(--seal-dark) 100%) !important;
+    border-color: var(--seal) !important;
+    color: #fff !important;
+    box-shadow: 0 8px 24px -10px rgba(255,90,31,0.55) !important;
+  }
+  .btn-mag-primary:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 12px 32px -10px rgba(255,90,31,0.7) !important;
+  }
+  .btn-mag-accent,
+  .btn-mag.accent {
+    background: var(--seal) !important;
+    border-color: var(--seal) !important;
+    color: #fff !important;
+  }
+  .btn-mag-secondary {
+    background: #fff !important;
+    color: var(--ink-2) !important;
+    border-color: var(--line) !important;
+    box-shadow: var(--shadow-1) !important;
+  }
+  .btn-mag-secondary:hover {
+    border-color: var(--seal) !important;
+    color: var(--seal-dark) !important;
+  }
   .btn-mag .arrow { display: inline-block; transition: transform .2s ease; }
   .btn-mag:hover .arrow { transform: translateX(3px); }
 
@@ -395,7 +450,7 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
     white-space: nowrap;
   }
 
-  /* ── Task 卡（左侧色条 + 圆形分数环）── */
+  /* ── Task 卡（圆形分数环，移除了左侧纯色条装饰）── */
   .task-row {
     display: grid;
     grid-template-columns: 78px 1fr auto;
@@ -410,15 +465,6 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
     transition: transform .2s, box-shadow .2s;
   }
   .task-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
-  .task-row::before {
-    content: "";
-    position: absolute; left: 0; top: 0; bottom: 0;
-    width: 6px;
-    background: var(--line);
-  }
-  .task-row.ok::before    { background: var(--jade); }
-  .task-row.doing::before { background: var(--amber); }
-  .task-row.late::before  { background: var(--signal); }
 
   /* ── Badge（旧语义兼容）── */
   .badge {
@@ -453,24 +499,15 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
   }
   .ripple:active::after { width: 300px; height: 300px; }
 
-  /* ── Ornamental Corner（装饰性拐角边）── */
+  /* ── Ornamental Corner（移除装饰性拐角边，统一纯色）── */
   .ornament-tl { position: relative; }
-  .ornament-tl::before {
-    content: '';
-    position: absolute; top: -1px; left: -1px;
-    width: 40px; height: 40px;
-    border-top: 3px solid var(--seal);
-    border-left: 3px solid var(--seal);
-    border-radius: 4px 0 0 0;
-    opacity: 0.5;
-  }
 }
 
 /* ═══════════════════════════════════════════
    ELEMENT PLUS OVERRIDES  (杂志风)
    ═══════════════════════════════════════════ */
 
-/* ── Table ── */
+/* ── Table（纯色化：移除表头粗线，保持淡分隔）── */
 .el-table {
   --el-table-border-color: var(--line-soft);
   --el-table-header-bg-color: var(--paper-2);
@@ -490,7 +527,7 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
   letter-spacing: 0.025em;
   text-transform: uppercase;
   padding: 14px 0;
-  border-bottom: 2px solid var(--line) !important;
+  border-bottom: 1px solid var(--line-soft) !important;
   font-family: var(--ff-sub);
 }
 .el-table .el-table__row { transition: background-color 0.2s ease; }
@@ -499,29 +536,19 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
 }
 .el-table .el-table__cell { border-color: var(--line-soft) !important; }
 
-/* ── Dialog ── */
+/* ── Dialog（纯色化：移除渐变顶条，保持纯色白底）── */
 .el-dialog {
   border-radius: var(--r-xl) !important;
   overflow: hidden;
   box-shadow: var(--shadow-3) !important;
   border: 1px solid var(--line);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.94)),
-    var(--paper);
+  background: #FFFFFF;
 }
 .el-dialog__header {
   padding: 22px 28px !important;
   border-bottom: 1px solid var(--line-soft);
   margin: 0 !important;
   position: relative;
-}
-.el-dialog__header::after {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--seal), transparent 60%);
-  opacity: .7;
 }
 .el-dialog__title {
   font-weight: 700 !important;
@@ -667,23 +694,14 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
 .el-message--warning { background: var(--amber-soft) !important; color: var(--amber-dark) !important; border-color: #EED48E !important; }
 .el-message--error   { background: var(--signal-soft) !important; color: var(--signal-dark) !important; border-color: #F0B3B9 !important; }
 
-/* ── Card (EL) ── */
+/* ── Card (EL)（纯色化：移除渐变顶条）── */
 .el-card {
   border-radius: var(--r-lg) !important;
   border-color: var(--line) !important;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.86)),
-    var(--paper) !important;
+  background: #FFFFFF !important;
   box-shadow: var(--shadow-1);
   position: relative;
   overflow: hidden;
-}
-.el-card::before {
-  content: "";
-  position: absolute; inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--seal), transparent 60%);
-  opacity: .7;
 }
 
 /* ── Drawer (EL) ── */
@@ -741,34 +759,18 @@ h4 { font-family: var(--ff-sub); font-size: 16px; }
   --sidebar-border: rgba(255,255,255,0.06);
 }
 
-/* 兼容旧代码里的 noise-bg */
+/* 兼容旧代码里的 noise-bg（移除噪点叠层，纯色） */
 .noise-bg { position: relative; }
 .noise-bg::after {
-  content: '';
-  position: absolute; inset: 0;
-  background-image: var(--tw-noise,
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E"));
-  pointer-events: none; z-index: 0;
+  content: none;
+  display: none;
 }
 
-/* 杂志风 gradient 边框 */
+/* 移除 gradient 发光边框装饰（纯色化） */
 .border-glow { position: relative; }
 .border-glow::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  background: linear-gradient(135deg, var(--seal), var(--cobalt), var(--amber), var(--seal));
-  background-size: 300% 300%;
-  animation: borderGlow 3s ease infinite;
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-.border-glow:hover::before { opacity: 1; }
-@keyframes borderGlow {
-  0%,100% { background-position: 0% 50%; }
-  50%     { background-position: 100% 50%; }
+  content: none;
+  display: none;
 }
 
 /* ═══════════════════════════════════════════

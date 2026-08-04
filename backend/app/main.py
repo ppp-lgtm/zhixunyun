@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,10 +17,14 @@ import os
 import subprocess
 
 
-def _port_probe(host: str = "127.0.0.1", port: int = 8000, exit_on_occupy: bool = False) -> bool:
+def _port_probe(host: str = "127.0.0.1", port: int = 8000, exit_on_occupy: bool = False,
+                launcher_script: str = "run.py") -> bool:
     """Port occupancy probe. ASCII-only output (keeps cmd.exe cp936 happy and
     avoids triggering ``... is not recognized as an internal command`` errors
     from Windows bat files).
+
+    launcher_script: the fallback script name shown in the "change port" hint
+    (defaults to "run.py" - the new preferred single-file entry).
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
@@ -37,6 +41,7 @@ def _port_probe(host: str = "127.0.0.1", port: int = 8000, exit_on_occupy: bool 
     procs_info: list[tuple[int, str, str]] = []
     try:
         if os.name == "nt":
+            # ① 先试 PowerShell Get-NetTCPConnection（最新 Windows）
             cmd = (
                 "Get-NetTCPConnection -LocalPort " + str(int(port)) +
                 " -State Listen -ErrorAction SilentlyContinue " +
@@ -59,21 +64,60 @@ def _port_probe(host: str = "127.0.0.1", port: int = 8000, exit_on_occupy: bool 
                     if pid and pid not in pids:
                         pids.append(pid)
                         procs_info.append((pid, name, path))
+
+            # ② PowerShell 没拿到 PID 就用 netstat 原生兜底（所有 Windows 都有）
             if not procs_info:
                 ns = subprocess.run(
                     ["netstat", "-ano", "-p", "tcp"],
                     capture_output=True, text=True, timeout=10,
                 ).stdout.splitlines()
-                target = ":" + str(int(port)) + " "
+                port_str = ":" + str(int(port))
                 for line in ns:
                     parts = line.split()
                     if len(parts) < 5: continue
-                    if parts[0].upper() == "TCP" and target in parts[1] and parts[-2].upper() == "LISTENING":
+                    # netstat 输出格式固定为：
+                    #   Proto  Local Address      Foreign Address    State        PID
+                    #   TCP    127.0.0.1:8000     0.0.0.0:0          LISTENING    39536
+                    # parts[1] 为本地地址(127.0.0.1:8000)，精确匹配端口号
+                    is_tcp = parts[0].upper() == "TCP"
+                    local_addr_match = parts[1].endswith(port_str)
+                    is_listening = parts[-2].upper() == "LISTENING"
+                    if is_tcp and local_addr_match and is_listening:
                         try: pid = int(parts[-1])
                         except ValueError: continue
                         if pid not in pids:
                             pids.append(pid)
                             procs_info.append((pid, "unknown", ""))
+
+            # ③ netstat 拿到 PID 但进程名 unknown → 用 tasklist 再补一次（中文环境最稳）
+            if procs_info and any(name == "unknown" for (_, name, _) in procs_info):
+                # 为所有未知 PID 一次性查 tasklist
+                unknown_pids = [pid for (pid, name, _) in procs_info if name == "unknown"]
+                if unknown_pids:
+                    # tasklist /FI "PID eq x" /FO CSV /NH → CSV 输出，列 0=进程名 1=PID
+                    pid_filters = " or ".join(f"PID eq {p}" for p in unknown_pids)
+                    try:
+                        tl = subprocess.run(
+                            ["tasklist", "/FI", pid_filters, "/FO", "CSV", "/NH"],
+                            capture_output=True, text=True, timeout=10,
+                        ).stdout.splitlines()
+                        pid_to_name: dict[int, str] = {}
+                        for line in tl:
+                            line = line.strip()
+                            if not line: continue
+                            cols = [c.strip().strip('"') for c in line.split('","')]
+                            if len(cols) < 2: continue
+                            try:
+                                p = int(cols[1])
+                                pid_to_name[p] = cols[0]
+                            except ValueError:
+                                pass
+                        procs_info[:] = [
+                            (pid, pid_to_name.get(pid, name), path)
+                            for (pid, name, path) in procs_info
+                        ]
+                    except Exception as _ek2:
+                        print(f"[port-probe] (tasklist fallback skipped: {_ek2})")
     except Exception as ek:
         print(f"[port-probe] (owner lookup skipped: {ek})")
 
@@ -85,16 +129,26 @@ def _port_probe(host: str = "127.0.0.1", port: int = 8000, exit_on_occupy: bool 
     if procs_info:
         print(f"  owner(s): {len(procs_info)}")
         for pid, name, path in procs_info:
-            print(f"    - PID {pid:<7d}  {name:<20s}  {path}")
+            if path:
+                print(f"    - PID {pid:<7d}  {name:<20s}  {path}")
+            else:
+                print(f"    - PID {pid:<7d}  {name:<20s}")
         print()
-        kill_cmd = "Stop-Process -Id " + ",".join(str(p) for p in pids) + " -Force"
+        # PowerShell kill 命令（需要管理员权限，且中文 PS 环境兼容）
+        kill_cmd_ps = "Stop-Process -Id " + ",".join(str(p) for p in pids) + " -Force"
+        # CMD 原生 kill 命令（中文环境更稳，不需要管理员，直接复制就能用）
+        kill_cmd_cmd = " & ".join(f"taskkill /PID {p} /F" for p in pids)
         print("  -> kill in PowerShell (run once):")
-        print(f"       {kill_cmd}")
+        print(f"       {kill_cmd_ps}")
+        print("  -> kill in CMD.exe / Windows Terminal (copy & paste):")
+        print(f"       {kill_cmd_cmd}")
     else:
         print("  owner(s): unknown")
+        print()
+        print("  -> kill hint (brute): Stop-Process -Name python -Force  (closes ALL python.exe)")
     next_port = int(port) + 1
     print()
-    print(f"  -> or change port: python serve.py --host {host} --port {next_port}")
+    print(f"  -> or change port: python {launcher_script} --host {host} --port {next_port}")
     print(bar)
     print()
     if exit_on_occupy:
@@ -118,6 +172,7 @@ from app.routers.notifications import router as notif_router
 from app.utils.ai_evaluator import is_ai_configured
 from app.routers.search import router as search_router
 from app.routers.enterprise_router import router as enterprise_router
+from app.routers.enterprise_router import student_router as student_interview_router
 from app.routers.job_match_router import router as job_match_router
 
 app = FastAPI(
@@ -135,13 +190,34 @@ app.add_middleware(
 )
 
 # 全局异常处理
+#
+# 注意：FastAPI/Starlette 的 @app.exception_handler 会"拦截"响应并绕过 CORSMiddleware，
+# 所以这里返回 JSONResponse 时必须 **手动补齐 CORS 头**。否则浏览器看不到
+# Access-Control-Allow-Origin，就把真实的 500 错误误报为"CORS 被拦"（你在 DevTools
+# 里看到的错误会是 CORS，真正原因反而被完全隐藏）。
+def _apply_cors_headers(request: Request, response: JSONResponse) -> JSONResponse:
+    origin = request.headers.get("origin") or "*"
+    response.headers.setdefault("Access-Control-Allow-Origin", origin)
+    response.headers.setdefault("Access-Control-Allow-Credentials", "true")
+    response.headers.setdefault(
+        "Access-Control-Allow-Methods",
+        request.headers.get("access-control-request-method", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
+    )
+    response.headers.setdefault(
+        "Access-Control-Allow-Headers",
+        request.headers.get("access-control-request-headers",
+                            "Authorization,Content-Type,Accept,X-Requested-With")
+    )
+    return response
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     error_detail = traceback.format_exc()
     print(f"[ERROR] {request.method} {request.url}")
     print(error_detail)
 
-    return JSONResponse(
+    resp = JSONResponse(
         status_code=500,
         content={
             "success": False,
@@ -149,6 +225,20 @@ async def global_exception_handler(request: Request, exc: Exception):
             "detail": str(exc) if app.debug else ""
         }
     )
+    return _apply_cors_headers(request, resp)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    # HTTPException 也走同一个 CORS 补齐逻辑，避免 401/403/404 时浏览器被误报成 CORS
+    resp = JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error": exc.detail
+        }
+    )
+    return _apply_cors_headers(request, resp)
 
 app.include_router(evaluate_router)
 app.include_router(upload_router)
@@ -164,9 +254,25 @@ app.include_router(task_manage_router)
 app.include_router(notif_router)
 app.include_router(search_router)
 app.include_router(enterprise_router)
+app.include_router(student_interview_router)
 app.include_router(job_match_router)
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# ---- 静态文件：uploads 目录 ----
+# 1) 以 backend/ 为基准解析绝对路径，避免"从哪个目录启动 python"导致找不到
+# 2) 启动时 mkdir 保证目录存在，避免首次上传 500
+_BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_UPLOADS_DIR = os.path.join(_BACKEND_ROOT, "uploads")
+os.makedirs(_UPLOADS_DIR, exist_ok=True)
+
+if os.path.isdir(_UPLOADS_DIR):
+    app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+else:
+    # 兜底：相对路径（老逻辑）
+    try:
+        os.makedirs("uploads", exist_ok=True)
+        app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+    except Exception:
+        pass
 
 @app.get("/")
 def hello():
@@ -244,9 +350,9 @@ if __name__ != "__main__":
     if _hp:
         _h, _p = _hp
         # Print-only, do NOT sys.exit() here - uvicorn's normal flow must remain unbroken.
-        _port_probe(_h, _p, exit_on_occupy=False)
+        _port_probe(_h, _p, exit_on_occupy=False, launcher_script="run.py")
         print(
             f"[port-probe] INFO uvicorn will bind {_h}:{_p} next; "
             f"if WinError 10048 appears, kill PID(s) listed above or use: "
-            f"python serve.py --port {int(_p) + 1}"
+            f"python run.py --port {int(_p) + 1}"
         )

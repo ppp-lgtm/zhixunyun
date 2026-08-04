@@ -1,96 +1,49 @@
 <template>
   <div class="min-h-full page-enter">
     <div class="w-full h-full">
-      <!-- ================== HEADER BAR ================= -->
-      <div class="mb-6">
-        <div class="flex items-center justify-between flex-wrap gap-4 mb-2">
-          <div>
-          <div class="flex items-center gap-2 text-xs text-ink-4 mb-2 font-sub tracking-wide">
-            <Icon icon="mdi:home-outline" />
-            <span>/</span>
-            <span>企业中心</span>
-            <span>/</span>
-            <span class="text-ink-2 font-semibold">评价工作台 · EVALUATE</span>
-          </div>
-          <div class="section-label !mb-2">ENTERPRISE · STATION V3.0</div>
-          <h1 class="font-display text-4xl font-black text-ink tracking-tight leading-none">
-            企业评价工作台
-          </h1>
-          <p class="font-body text-ink-4 mt-2 text-[15px]">
-            高校-企业协同实训 · 学生成果对标岗位需求，一站式完成打分与面试建议
-          </p>
-          </div>
-        </div>
-      </div>
+      <!-- ================== 单张大卡片：标题 / 列表 / 详情 / 评分 全在里面 ================= -->
+      <div class="card-mag p-0 overflow-hidden">
 
-      <!-- ================== STATS STRIP (4 stats) ================= -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="stat-card bg-gradient-card-blue">
-          <div class="relative z-10">
-            <div class="flex items-center justify-between mb-4">
-              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                <Icon icon="mdi:file-document-multiple-outline" class="text-xl"/>
-              </div>
-              <span class="text-white/80 text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/15">
-                总提交
-              </span>
+        <!-- ---- HEADER：标题 + 简介 ---- -->
+        <div class="px-8 pt-7 pb-6 border-b border-line/80">
+          <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="min-w-0">
+              <h1 class="font-display text-4xl font-black text-ink tracking-tight leading-none">
+                企业评价工作台
+              </h1>
+              <p class="font-body text-ink-4 mt-2 text-[15px]">
+                高校-企业协同实训 · 学生成果对标岗位需求，一站式完成打分与面试建议
+              </p>
             </div>
-            <div class="text-3xl font-black tracking-tight">{{ listMeta.total }}</div>
-            <div class="text-white/70 text-sm mt-1">份</div>
-          </div>
-        </div>
-        <div class="stat-card bg-gradient-card-amber">
-          <div class="relative z-10">
-            <div class="flex items-center justify-between mb-4">
-              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                <Icon icon="mdi:clock-outline" class="text-xl"/>
-              </div>
-              <span class="text-white/80 text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/15">待评价</span>
+            <div class="flex items-center gap-2 text-[12.5px] font-sub text-ink-3">
+              <span class="chip-mag">总计 {{ filteredList.length }} 条</span>
+              <span class="chip-mag !bg-amber/12 !text-amber-dark !border-amber/25">待评价 {{ listMeta.pending }}</span>
+              <span class="chip-mag !bg-jade/12 !text-jade-dark !border-jade/25">已评价 {{ listMeta.done }}</span>
+              <button @click="fetchList" class="chip-mag hover:!bg-seal/5">
+                <Icon icon="mdi:refresh" class="mr-1" inline width="12" /> 刷新
+              </button>
             </div>
-            <div class="text-3xl font-black tracking-tight">{{ listMeta.pending }}</div>
-            <div class="text-white/70 text-sm mt-1">份</div>
           </div>
-        </div>
-        <div class="stat-card bg-gradient-card-emerald">
-          <div class="relative z-10">
-            <div class="flex items-center justify-between mb-4">
-              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                <Icon icon="mdi:check-circle-outline" class="text-xl"/>
-              </div>
-              <span class="text-white/80 text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/15">已评价</span>
-            </div>
-            <div class="text-3xl font-black tracking-tight">{{ listMeta.done }}</div>
-            <div class="text-white/70 text-sm mt-1">份</div>
-          </div>
-        </div>
-        <div class="stat-card bg-gradient-card-violet">
-          <div class="relative z-10">
-            <div class="flex items-center justify-between mb-4">
-              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                <Icon icon="mdi:star-half-full" class="text-xl"/>
-              </div>
-              <span class="text-white/80 text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/15">均分</span>
-            </div>
-            <div class="text-3xl font-black tracking-tight">{{ listMeta.avgScore }}</div>
-            <div class="text-white/70 text-sm mt-1">/100</div>
-          </div>
-        </div>
-      </div>
 
-      <!-- ================== MAIN 50/50 SPLIT ===================== -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- 接口错误提示（总卡内部） -->
+          <div v-if="listLoadError" class="mt-5 rounded-2xl border-2 border-seal/30 bg-seal/[0.06] px-5 py-4 flex items-start gap-3">
+            <Icon icon="mdi:alert-circle-outline" class="text-seal text-xl flex-shrink-0 mt-0.5" />
+            <div class="text-[13.5px] text-seal-dark leading-[1.7] flex-1">{{ listLoadError }}</div>
+          </div>
+        </div>
 
-        <!-- LEFT 50% · 待评价列表（左50%·筛选+卡片列表） -->
-        <div class="lg:col-span-5 xl:col-span-5">
-          <div class="card-mag p-0 overflow-hidden">
-            <!-- header + filter -->
+        <!-- ---- MAIN：5/7 两列，内部不再用 card-mag，只用分隔线 ---- -->
+        <div class="grid grid-cols-1 lg:grid-cols-12">
+
+          <!-- ===== LEFT：提交列表（无外卡，右分隔线） ===== -->
+          <div class="lg:col-span-5 xl:col-span-5 lg:border-r border-line/80">
+            <!-- 列表头部：筛选 + 搜索 -->
             <div class="px-7 py-5 border-b border-line/80">
               <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
                 <div>
                   <div class="section-label !mb-1.5">01 · LIST · 提交列表</div>
                   <h3 class="font-display text-xl font-bold text-ink tracking-tight">
                     待/已评价学生提交
-                    <span class="chip-mag ml-2">{{ filteredList.length }}</span>
                   </h3>
                 </div>
                 <div class="flex items-center gap-2 text-[12px]">
@@ -119,12 +72,13 @@
                 />
               </div>
             </div>
+
             <!-- 列表区 -->
-            <div class="max-h-[62vh] overflow-y-auto px-2 py-2">
+            <div class="max-h-[72vh] overflow-y-auto px-2 py-3">
               <div v-if="filteredList.length === 0" class="py-16 px-7 text-center font-body text-ink-4">
-              <Icon icon="mdi:inbox-arrow-down-outline" class="text-5xl opacity-40 mb-3" />
+                <Icon icon="mdi:inbox-arrow-down-outline" class="text-5xl opacity-40 mb-3" />
                 <div>当前筛选条件下暂无提交，尝试切换状态或清空关键词</div>
-            </div>
+              </div>
               <div
                 v-for="row in filteredList"
                 :key="row.submission_id || row.id"
@@ -178,133 +132,143 @@
                 </div>
               </div>
             </div>
-            <!-- 分页 -->
-            <div v-if="false" class="px-7 py-4 border-t border-line/60 flex items-center justify-between text-[12px] font-sub text-ink-4">
-              <span>共 {{ filteredList.length }} 条</span>
-              <div class="flex gap-1">
-                <button class="chip-mag">上一页</button>
-                <button class="chip-mag chip-mag-active">1</button>
-                <button class="chip-mag">下一页</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- RIGHT 50% · 三 Tab 打分面板 -->
-        <div class="lg:col-span-7 xl:col-span-7">
-          <div v-if="!activeSubmission" class="card-mag min-h-[70vh] flex flex-col items-center justify-center text-center p-10">
-            <div class="relative mb-6">
-              <div class="w-28 h-28 rounded-3xl border-2 border-dashed border-line/80 flex items-center justify-center">
-                <Icon icon="mdi:cursor-default-click" class="text-5xl text-ink-4 opacity-60" />
-              </div>
-            </div>
-            <div class="section-label !mb-2">02 · PANEL · 打分三栏面板</div>
-            <h3 class="font-display text-2xl font-bold text-ink tracking-tight mb-2">
-              选择左侧一条提交即可开始评价
-            </h3>
-            <p class="font-body text-ink-4 text-[14.5px] max-w-md">
-              推荐流程：① 先查看学生提交内容 ② 对照 AI/教师已有的评价记录 ③ 按岗位技能要求打分 + 面试建议
-            </p>
           </div>
 
-          <template v-else>
-            <!-- section header: 学生/任务条 -->
-            <div class="card-mag p-0 mb-5 overflow-hidden">
-              <div class="px-7 py-5 flex items-start md:items-center gap-5 flex-wrap">
-                <div class="flex items-center gap-4 flex-1 min-w-0">
-                  <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-seal to-amber-dark text-white font-black text-xl flex items-center justify-center shadow-sm">
-                    {{ initialOf(activeSubmission) }}
-                  </div>
-                  <div class="min-w-0">
-                    <div class="section-label !mb-1">SUBMISSION · {{ activeSubmission.submission_id || activeSubmission.id }}</div>
-                    <h3 class="font-display text-2xl font-black text-ink tracking-tight">
-                      {{ activeSubmission.student?.real_name || activeSubmission.name }}
-                    </h3>
-                    <p class="font-body text-ink-4 mt-1 text-[14px] truncate">
-                      {{ activeSubmission.task?.title || activeSubmission.taskName }}
-                      <span class="text-ink-3"> · </span>
-                      {{ (activeSubmission.classes || []).join(' · ') || activeSubmission.className || '' }}
-                    </p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button
-                    @click="loadCompare(activeId)"
-                    v-if="compareDataLoaded || (activeSubmission.enterprise_evaluation)"
-                    class="btn-mag btn-mag-ghost px-4 py-2.5 text-[13px]">
-                    <Icon icon="mdi:chart-bell-ring-outline" class="mr-1" /> 查看三方对比
-                  </button>
-                  <button
-                    class="btn-mag btn-mag-primary px-4 py-2.5 text-[13px]"
-                    :disabled="!canSaveEval"
-                    @click="submitEval">
-                    <Icon icon="mdi:content-save-check-outline" class="mr-1" />
-                    {{ activeEvalId ? '更新企业评价' : '提交企业评价' }}
-                  </button>
+          <!-- ===== RIGHT：单页融合（无外卡） ===== -->
+          <div class="lg:col-span-7 xl:col-span-7">
+            <!-- 未选中：空态（用内部留白，不套卡） -->
+            <div v-if="!activeSubmission" class="min-h-[72vh] flex flex-col items-center justify-center text-center p-12">
+              <div class="relative mb-6">
+                <div class="w-28 h-28 rounded-3xl border-2 border-dashed border-line/80 flex items-center justify-center">
+                  <Icon icon="mdi:cursor-default-click" class="text-5xl text-ink-4 opacity-60" />
                 </div>
               </div>
-              <!-- TABS -->
-              <div class="flex items-center gap-1 px-4 pb-0 border-t border-line/60 bg-paper-2/30">
-                <button
-                  v-for="(t,i) in rightTabs" :key="t.value"
-                  @click="rightTab = t.value"
-                  class="relative py-3.5 px-5 font-sub font-semibold text-[13.5px] transition-colors"
-                  :class="rightTab === t.value ? 'text-seal' : 'text-ink-4 hover:text-ink-2'">
-                  <span class="mr-1.5 opacity-60">{{ ['01','02','03'][i] }}</span>{{ t.label }}
-                  <span v-if="t.value === 'score' && evalDirty && canSaveEval"
-                    class="ml-1 inline-block w-2 h-2 rounded-full bg-seal align-middle"></span>
-                  <span v-if="rightTab === t.value"
-                    class="absolute left-3 right-3 -bottom-[1px] h-[3px] rounded-full bg-seal"></span>
-                </button>
-              </div>
+              <div class="section-label !mb-2">02 · UNIFIED WORKSPACE · 一体化工作面板</div>
+              <h3 class="font-display text-2xl font-bold text-ink tracking-tight mb-2">
+                选择左侧一条提交即可开始评价
+              </h3>
+              <p class="font-body text-ink-4 text-[14.5px] max-w-md">
+                融合视图：① 学生卡 ② 提交内容 ③ AI/教师参考评分 ④ 企业维度评分 + 岗位匹配，一站式完成打分。
+              </p>
             </div>
 
-            <!-- 【TAB 1: CONTENT -->
-            <div v-show="rightTab==='content'" class="card-mag p-7 animate-fade-in">
-              <div class="section-label mb-3">STUDENT WORK · 学生提交</div>
-              <h4 class="font-display text-xl font-bold mb-5">学生提交内容</h4>
-              <pre class="font-mono text-[13.5px] bg-paper-2 rounded-2xl border border-line/70 p-5 whitespace-pre-wrap text-ink-2 leading-[1.75] max-h-[60vh] overflow-auto">{{ contentPreview }}</pre>
-              <div v-if="detail?.files || activeSubmission?.files || activeSubmission?.filename"
-                   class="mt-5 flex flex-wrap gap-3">
-                <a v-for="(f,i) in (detail?.files || [])" :key="i"
-                   :href="f.url || '#'" class="chip-mag !text-[13px] !py-2 !px-4">
-                  <Icon icon="mdi:download-outline" class="mr-1.5" />{{ f.name }}
-                </a>
-                <a v-if="activeSubmission?.filename && !detail?.files?.length"
-                   class="chip-mag !text-[13px] !py-2 !px-4"
-                   :href="`${API_BASE}/uploads/submissions/${activeSubmission.filename}`" target="_blank">
-                  <Icon icon="mdi:download-outline" class="mr-1.5" />
-                  {{ activeSubmission.filename }}
-                </a>
+            <template v-else>
+              <!-- ===== 01 · 顶部学生卡（吸顶保存条）===== -->
+              <div class="sticky top-3 z-20 bg-paper border-y border-line/80 px-8 py-5 shadow-[0_8px_20px_-14px_rgba(30,41,59,0.2)] backdrop-blur-sm">
+                <div class="flex items-start md:items-center gap-5 flex-wrap">
+                  <div class="flex items-center gap-4 flex-1 min-w-0">
+                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-seal to-amber-dark text-white font-black text-xl flex items-center justify-center shadow-sm">
+                      {{ initialOf(activeSubmission) }}
+                    </div>
+                    <div class="min-w-0">
+                      <div class="section-label !mb-1">SUBMISSION · {{ activeSubmission.submission_id || activeSubmission.id }}</div>
+                      <h3 class="font-display text-2xl font-black text-ink tracking-tight">
+                        {{ activeSubmission.student?.real_name || activeSubmission.name }}
+                      </h3>
+                      <p class="font-body text-ink-4 mt-1 text-[14px] truncate">
+                        {{ activeSubmission.task?.title || activeSubmission.taskName }}
+                        <span class="text-ink-3"> · </span>
+                        {{ (activeSubmission.classes || []).join(' · ') || activeSubmission.className || '' }}
+                      </p>
+                      <p class="font-body text-[12.5px] text-ink-3 mt-0.5">
+                        学号：{{ activeSubmission.student?.user_number || activeSubmission.studentNo || '—' }}
+                        <span class="text-ink-3 mx-2">·</span>
+                        提交时间：{{ activeSubmission.submitted_at || activeSubmission.submitTime || '—' }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span
+                      v-if="activeSubmission.evaluation_status === 'done'"
+                      class="chip-mag !bg-jade/12 !text-jade-dark !border-jade/30">✓ 已评价</span>
+                    <span v-else class="chip-mag !bg-amber/15 !text-amber-dark !border-amber/30">⏳ 待评价</span>
+                    <button
+                      @click="loadCompare(activeId)"
+                      v-if="compareDataLoaded || (activeSubmission.enterprise_evaluation)"
+                      class="btn-mag btn-mag-ghost px-4 py-2.5 text-[13px]">
+                      <Icon icon="mdi:chart-bell-ring-outline" class="mr-1" /> 查看三方对比
+                    </button>
+                    <button
+                      class="btn-mag btn-mag-primary px-4 py-2.5 text-[13px]"
+                      :disabled="!canSaveEval"
+                      @click="submitEval">
+                      <Icon icon="mdi:content-save-check-outline" class="mr-1" />
+                      {{ activeEvalId ? '更新企业评价' : '提交企业评价' }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- ===== Tab 标签（5 步） ===== -->
+                <div class="mt-5 -mx-1 overflow-x-auto">
+                  <div class="flex items-center gap-1 min-w-max p-1 rounded-xl bg-paper-2 border border-line/60">
+                    <button
+                      v-for="t in rightTabs"
+                      :key="t.value"
+                      @click="rightTabIdx = t.value"
+                      class="group relative flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-sub transition-all"
+                      :class="rightTabIdx === t.value
+                        ? 'bg-white text-ink shadow-sm border border-line/70'
+                        : 'text-ink-4 hover:text-ink-2 hover:bg-white/40'">
+                      <span class="w-6 h-6 rounded-md text-[11.5px] font-black flex items-center justify-center"
+                            :class="rightTabIdx === t.value
+                              ? 'bg-seal/10 text-seal-dark'
+                              : 'bg-ink-4/10 text-ink-3 group-hover:bg-ink-4/15'">
+                        {{ t.value + 1 }}
+                      </span>
+                      <Icon :icon="t.icon" class="opacity-80" />
+                      <span class="font-semibold whitespace-nowrap">{{ t.label }}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div v-if="detail?.student_classes?.length" class="mt-6 p-5 bg-cobalt/5 rounded-2xl border border-cobalt/15">
-                <div class="section-label !mb-2">STUDENT PROFILE · 学生档案</div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                  <div v-for="c in detail.student_classes" :key="c.id"
-                       class="flex items-center gap-3 p-3 rounded-xl bg-white border border-line">
-                    <Icon icon="mdi:school-outline" class="text-cobalt" />
-                    <div>
-                      <div class="font-sub font-bold text-ink">{{ c.name }}</div>
-                      <div class="text-[12px] text-ink-4">{{ c.major || '' }} · {{ c.grade || '' }}</div>
+
+              <!-- ===== 02 · 学生提交内容 ===== -->
+              <div v-show="rightTabIdx===0" class="px-8 py-7 animate-fade-in border-b border-line/80">
+                <div class="section-label mb-3">02 · STUDENT WORK · 学生提交</div>
+                <h4 class="font-display text-xl font-bold mb-5">提交内容预览</h4>
+                <pre class="font-mono text-[13.5px] bg-paper-2 rounded-2xl border border-line/70 p-5 whitespace-pre-wrap text-ink-2 leading-[1.75] max-h-[52vh] overflow-auto">{{ contentPreview }}</pre>
+                <div v-if="detail?.files || activeSubmission?.files || activeSubmission?.download_url"
+                     class="mt-5 flex flex-wrap gap-3">
+                  <a v-for="(f,i) in (detail?.files || [])" :key="i"
+                     :href="f.url || '#'" class="chip-mag !text-[13px] !py-2 !px-4">
+                    <Icon icon="mdi:download-outline" class="mr-1.5" />{{ f.name }}
+                  </a>
+                  <a v-if="activeSubmission?.download_url && !detail?.files?.length"
+                     class="chip-mag !text-[13px] !py-2 !px-4"
+                     :href="API_BASE + activeSubmission.download_url" target="_blank">
+                    <Icon icon="mdi:download-outline" class="mr-1.5" />
+                    {{ activeSubmission.filename }}
+                  </a>
+                </div>
+                <div v-if="detail?.student_classes?.length" class="mt-6 p-5 bg-cobalt/5 rounded-2xl border border-cobalt/15">
+                  <div class="section-label !mb-2">STUDENT PROFILE · 学生档案</div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div v-for="c in detail.student_classes" :key="c.id"
+                         class="flex items-center gap-3 p-3 rounded-xl bg-white border border-line">
+                      <Icon icon="mdi:school-outline" class="text-cobalt" />
+                      <div>
+                        <div class="font-sub font-bold text-ink">{{ c.name }}</div>
+                        <div class="text-[12px] text-ink-4">{{ c.major || '' }} · {{ c.grade || '' }}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- 【TAB 2: AI + 教师评分 -->
-            <div v-show="rightTab==='ai-teacher'" class="animate-fade-in space-y-5">
-              <template v-if="compareLoaded">
-                <TripartiteCompare
-                  :parties="compareData.parties"
-                  :dimensionBreakdown="compareData.dimension_breakdown"
-                  :summary="compareData.summary"
-                />
-              </template>
-              <template v-else-if="(detail?.evaluations || []).length">
-                <div class="card-mag p-7">
-                  <div class="section-label !mb-2">AI + TEACHER · 已有评价</div>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+              <!-- ===== 03 · AI 评价 + 教师评价 ===== -->
+              <div v-show="rightTabIdx===1" class="px-8 py-7 animate-fade-in border-b border-line/80">
+                <template v-if="compareLoaded">
+                  <TripartiteCompare
+                    :parties="compareData.parties"
+                    :dimensionBreakdown="compareData.dimension_breakdown"
+                    :summary="compareData.summary"
+                    :hideConsistencyCard="true"
+                  />
+                </template>
+                <template v-else-if="(detail?.evaluations || []).length">
+                  <div class="section-label !mb-2">03 · REFERENCE · AI + 教师参考评分</div>
+                  <h4 class="font-display text-xl font-bold mb-5 text-ink">已有评价记录（供企业导师参考）</h4>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div v-for="e in (detail?.evaluations || [])" :key="e.id" class="rounded-2xl border border-line bg-paper p-5">
                       <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center gap-2">
@@ -330,19 +294,17 @@
                       </p>
                     </div>
                   </div>
+                </template>
+                <div v-else class="py-12 text-center text-ink-4 font-body">
+                  <Icon icon="mdi:file-clock-outline" class="text-5xl opacity-40 mb-3" />
+                  AI/教师评价尚未生成，提交完成后此处将自动呈现。
                 </div>
-              </template>
-              <div v-else class="card-mag p-10 text-center text-ink-4 font-body">
-                <Icon icon="mdi:file-clock-outline" class="text-5xl opacity-40 mb-3" />
-                AI/教师评价尚未生成，提交完成后此处将自动呈现。
               </div>
-            </div>
 
-            <!-- 【TAB 3: 企业打分（打分+适配度+面试建议） -->
-            <div v-show="rightTab==='score'" class="animate-fade-in space-y-5">
-              <div class="card-mag p-7">
-                <div class="section-label !mb-3">01 · DIMENSION SCORE · 维度打分</div>
-                <h4 class="font-display text-xl font-bold mb-5 text-ink">企业维度评分（{{ evalDimScoreSum }} / 100）</h4>
+              <!-- ===== 04 · 企业维度评分 ===== -->
+              <div v-show="rightTabIdx===2" class="px-8 py-7 animate-fade-in border-b border-line/80">
+                <div class="section-label !mb-3">04 · ENTERPRISE SCORE · 企业维度评分（{{ evalDimScoreSum }} / 100）</div>
+                <h4 class="font-display text-xl font-bold mb-5 text-ink">按岗位要求逐项打分</h4>
                 <div v-if="(evalDims||[]).length===0" class="text-ink-4 font-body text-[14px]">
                   请选择下方「关联岗位」或直接添加维度后开始打分（AI 将根据岗位技能要求自动推荐维度）。
                 </div>
@@ -381,9 +343,10 @@
                 </button>
               </div>
 
-              <!-- 岗位适配 + 三卡片面试建议 -->
-              <div class="card-mag p-7">
-                <div class="section-label !mb-3">02 · JOB FIT · 岗位匹配</div>
+              <!-- ===== 05 · 岗位匹配 + 面试建议 ===== -->
+              <div v-show="rightTabIdx===3" class="px-8 py-7 animate-fade-in border-b border-line/80">
+                <div class="section-label !mb-3">05 · JOB FIT + INTERVIEW · 岗位匹配与面试建议</div>
+                <h4 class="font-display text-xl font-bold mb-5 text-ink">岗位匹配 / 适配度 / 面试建议</h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
                   <div>
                     <label class="block text-[12px] font-sub font-bold text-ink-4 uppercase tracking-[0.16em] mb-2">
@@ -418,7 +381,7 @@
                     />
                   </div>
                 </div>
-                <div class="section-label !mb-3">03 · INTERVIEW · 面试建议三卡片</div>
+                <div class="section-label !mb-3">面试建议（三选一）</div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
                   <button @click="evalInterview = 'recommend'"
                           class="p-5 rounded-2xl text-left border-2 transition-all"
@@ -478,16 +441,60 @@
                             class="w-full rounded-xl border border-line bg-paper p-3 outline-none focus:border-seal/40 font-body"></textarea>
                 </div>
               </div>
-            </div>
-          </template>
+
+              <!-- ===== 底部：上一步 / 下一步（每步都有） ===== -->
+              <div class="px-8 py-4 border-t border-line/80 bg-paper/40 flex items-center justify-between gap-4 flex-wrap">
+                <div class="font-sub text-ink-4 text-[13px] tracking-wide">
+                  STEP <span class="font-black text-ink">{{ rightTabIdx + 1 }}</span> / {{ rightTabs.length }}
+                  <span class="ml-2 text-ink-3">· {{ rightTabs[rightTabIdx].label }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="btn-mag btn-mag-ghost px-4 py-2.5 text-[13px]"
+                    :disabled="rightTabIdx===0"
+                    @click="prevTab">
+                    <Icon icon="mdi:arrow-left-bold-outline" class="mr-1" /> 上一步
+                  </button>
+                  <button
+                    class="btn-mag btn-mag-primary px-4 py-2.5 text-[13px]"
+                    :disabled="rightTabIdx===rightTabs.length-1"
+                    @click="nextTab">
+                    下一步 <Icon icon="mdi:arrow-right-bold-outline" class="ml-1" />
+                  </button>
+                </div>
+              </div>
+
+              <!-- ===== 底部汇总保存（第 5 步出现） ===== -->
+              <div v-show="rightTabIdx===4" class="px-8 py-6 bg-paper-2/40 border-t border-line/80 flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <div class="section-label !mb-1">READY TO SUBMIT</div>
+                  <div class="font-sub text-ink">
+                    当前企业均分：<span class="font-display font-black text-2xl" :class="scoreColor(evalDimScoreSum)">{{ evalDimScoreSum }}</span>
+                    <span class="text-ink-3 text-sm mx-2">·</span>
+                    岗位适配度：<span class="font-display font-black text-xl" :class="scoreColor(evalJobFit)">{{ evalJobFit }}</span>
+                    <span v-if="evalDirty" class="chip-mag !bg-seal/12 !text-seal-dark !border-seal/30 ml-2">有未保存修改</span>
+                  </div>
+                </div>
+                <button
+                  class="btn-mag btn-mag-primary px-6 py-3 text-[14px]"
+                  :disabled="!canSaveEval"
+                  @click="submitEval">
+                  <Icon icon="mdi:content-save-check-outline" class="mr-1" />
+                  {{ activeEvalId ? '更新企业评价' : '提交企业评价' }}
+                </button>
+              </div>
+            </template>
+          </div>
+
         </div>
+
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { API_BASE } from '../config'
@@ -495,15 +502,11 @@ import TripartiteCompare from '../components/common/TripartiteCompare.vue'
 
 /* ========================= Types ========================= */
 type RowT = any
-const rightTabs = [
-  { value: 'content',    label: '学生提交' },
-  { value: 'ai-teacher',label: 'AI + 教师评分' },
-  { value: 'score',     label: '企业打分' },
-]
 
 /* ========================= State ========================= */
 const list = ref<RowT[]>([])
 const listLoading = ref(false)
+const listLoadError = ref('')
 const listStatus = ref<string>('')
 const keyword = ref('')
 
@@ -511,7 +514,6 @@ const activeId = ref<number | null>(null)
 const activeSubmission = ref<RowT | null>(null)
 const detail = ref<any>(null)
 const detailLoading = ref(false)
-const rightTab = ref<'content'|'ai-teacher'|'score'>('content')
 
 // 三方对比
 const compareId = ref<number | null>(null)
@@ -530,6 +532,18 @@ const evalComment = ref('')
 const evalDirty = ref(false)
 const activeEvalId = ref<number | null>(null)
 const submitting = ref(false)
+
+// Tab 切换（5 步）+ 上一步 / 下一步
+const rightTabIdx = ref(0)
+const rightTabs = [
+  { value: 0, label: '提交内容', icon: 'mdi:file-document-outline' },
+  { value: 1, label: 'AI + 教师评分', icon: 'mdi:account-group-outline' },
+  { value: 2, label: '企业维度评分', icon: 'mdi:star-four-points-outline' },
+  { value: 3, label: '岗位匹配 / 面试', icon: 'mdi:briefcase-account-outline' },
+  { value: 4, label: '提交汇总', icon: 'mdi:send-check-outline' },
+]
+function prevTab() { if (rightTabIdx.value > 0) rightTabIdx.value-- }
+function nextTab() { if (rightTabIdx.value < rightTabs.length - 1) rightTabIdx.value++ }
 
 /* ========================= Derived ========================= */
 const filteredList = computed(() => {
@@ -591,6 +605,7 @@ function scoreColor(n: any) {
 /* ========================= Actions ========================= */
 async function fetchList() {
   listLoading.value = true
+  listLoadError.value = ''
   try {
     const token = localStorage.getItem('token')
     const headers: any = {}
@@ -599,41 +614,34 @@ async function fetchList() {
       headers, params: { page: 1, page_size: 50 }
     })
     list.value = (data?.list || []).map((x: any, i: number) => ({ ...x, _i: i }))
+    if (list.value.length === 0) {
+      listLoadError.value =
+        '当前没有可评测的实训提交。如果企业尚未绑定班级，系统默认展示全部活跃班级的已提交作业；若仍然为空，请联系教师布置实训并让学生提交。'
+    }
   } catch (e: any) {
-    // 离线兜底：塞 mock （便于 UI 能直接看到效果
-    list.value = mockList()
+    list.value = []
+    const status = e?.response?.status
+    const d = e?.response?.data?.detail
+    const msg = d || e?.message || '接口请求失败'
+    if (status === 401) {
+      listLoadError.value = `登录已过期（401）：请退出后使用企业导师账号重新登录。${d ? '详情：' + d : ''}`
+    } else if (status === 403) {
+      listLoadError.value = `无权访问（403）：当前账号不是企业导师角色，或该企业未被授权查看此班级。${d ? '详情：' + d : ''}`
+    } else if (status && status >= 500) {
+      listLoadError.value = `服务异常（${status}）：请检查后端日志并联系维护人员。`
+    } else {
+      listLoadError.value = `提交列表加载失败：${msg}（请启动后端服务，并使用企业导师账号登录）`
+    }
   } finally {
     listLoading.value = false
   }
 }
-function mockList(): RowT[] {
-  return [
-    { submission_id:1001, name:'张伟', studentNo:'2024001', className:'软件2401', taskName:'Web前端开发实训',
-      submitTime:'2026-07-28 14:32', score:null, evaluation_status:'pending',
-      classes:['软件技术2401班'], student:{real_name:'张伟', user_number:'2024001'}, task:{title:'Web前端开发实训'}, filename:'zhangwei_webproj.zip' },
-    { submission_id:1002, name:'李娜', studentNo:'2024002', className:'软件2401', taskName:'Web前端开发实训',
-      submitTime:'2026-07-27 16:15', score:95, evaluation_status:'done',
-      classes:['软件技术2401班'], student:{real_name:'李娜', user_number:'2024002'}, task:{title:'Web前端开发实训'},
-      enterprise_evaluation:{total_score:95} },
-    { submission_id:1003, name:'王强', studentNo:'2024003', className:'软工2402', taskName:'Java后端项目',
-      submitTime:'2026-07-27 09:48', score:null, evaluation_status:'pending',
-      classes:['软件工程2402班'], student:{real_name:'王强', user_number:'2024003'}, task:{title:'Java后端开发项目'}, filename:'wangqiang_java.zip' },
-    { submission_id:1004, name:'刘洋', studentNo:'2024004', className:'软工2402', taskName:'Java后端项目',
-      submitTime:'2026-07-26 20:22', score:88, evaluation_status:'done',
-      classes:['软件工程2402班'], student:{real_name:'刘洋', user_number:'2024004'}, task:{title:'Java后端开发项目'},
-      enterprise_evaluation:{total_score:88} },
-    { submission_id:1005, name:'陈静', studentNo:'2024005', className:'计科2401', taskName:'全栈电商系统',
-      submitTime:'2026-07-25 11:10', score:null, evaluation_status:'pending',
-      classes:['计算机科学2401班'], student:{real_name:'陈静', user_number:'2024005'}, task:{title:'全栈电商系统开发'}, filename:'chenjing_ecommerce.zip' },
-  ]
-}
 async function selectSubmission(row: any) {
   activeId.value = row.submission_id || row.id
   activeSubmission.value = row
-  rightTab.value = 'content'
   compareLoaded.value = false
+  rightTabIdx.value = 0
   await fetchDetail(activeId.value!)
-  // 同时尝试拉三方对比（如企业已评直接显示）
   const ent = row.enterprise_evaluation
   if (ent) loadCompare(activeId.value!)
   else seedEvalFormFrom(row, ent ?? null)
@@ -647,74 +655,21 @@ async function fetchDetail(subId: number) {
     if (token) headers.Authorization = `Bearer ${token}`
     const { data } = await axios.get(`${API_BASE}/api/enterprise/evaluations/submissions/${subId}`, { headers })
     detail.value = data?.data || data || null
-    // 如果接口返回已有企业评价则回填
     seedEvalFormFrom(activeSubmission.value, detail.value?.enterprise_evaluation ?? null)
-    if (detail.value?.available_jobs?.length && !evalMatchedJobId.value) {
-      // 不强制填，只给默认第一个
-    }
   } catch (e) {
-    detail.value = mockDetail(subId)
-    seedEvalFormFrom(activeSubmission.value, detail.value?.enterprise_evaluation ?? null)
+    detail.value = null
+    seedEvalFormFrom(activeSubmission.value, null)
   } finally {
     detailLoading.value = false
   }
 }
-function mockDetail(subId: number) {
-  return {
-    submission_id: subId,
-    content: `# 实训报告 - 张伟\n\n## 一、项目概述\n这是一个基于 Vue3 + TypeScript + Vite 的前端实训项目，完成了首页、登录、实训提交、评价查看四个模块。\n\n## 二、功能完成情况\n- ✅ 登录 / 注册 流程\n- ✅ 班级列表 + 任务提交\n- ✅ AI 评价结果页查看\n- ⚠️ 教师端部分：任务管理模块功能不完整（缺少删除）\n\n## 三、代码质量\n采用组件化分模块开发，注释率约 22%。\n\n## 四、遇到问题\n- 1. 登录接口在 3 种角色区分；\n- 2. axios 封装拦截器统一处理 token；\n- 3. 图表库使用 ECharts。\n`,
-    evaluations: [
-      { id: 1, evaluator_type:'ai', total_score: 86, comment:'项目功能较完整，组件拆分清晰，代码复用良好，异常处理可进一步加强。',
-        dimension_scores:[
-          {name:'功能完整性', score:88, reason:'核心流程通，个别边缘情况未覆盖'},
-          {name:'代码规范性', score:82, reason:'命名规范，注释中等偏少'},
-          {name:'技术选型合理性', score:90, reason:'Vue3 + TS 选型合适'},
-          {name:'文档与说明', score:84, reason:'报告结构清晰'},
-        ]
-      },
-      { id: 2, evaluator_type:'teacher', total_score: 90, comment:'整体完成度高，课堂讲解清晰，答辩表达清楚。',
-        dimension_scores:[
-          {name:'功能完整性', score:92 },
-          {name:'代码规范性', score:88 },
-          {name:'技术选型合理性', score:89 },
-          {name:'文档与说明', score:90 },
-        ]
-      },
-    ],
-    available_jobs: [
-      {id:1, title:'前端开发工程师', level:'初级', city:'杭州', job_type:'全职',
-        skill_requirements:[
-          {name:'Vue/React 框架', weight:30, threshold:80},
-          {name:'JS/TS 基础', weight:25, threshold:78},
-          {name:'工程化能力', weight:20, threshold:70},
-          {name:'CSS/样式基础', weight:15, threshold:70},
-          {name:'沟通与协作', weight:10, threshold:75},
-        ]
-      },
-      {id:2, title:'Java 后端工程师', level:'初级', city:'上海', job_type:'全职',
-        skill_requirements:[
-          {name:'Java 基础与集合', weight:30, threshold:80},
-          {name:'Spring Boot 框架', weight:30, threshold:80},
-          {name:'MySQL/SQL', weight:20, threshold:75},
-          {name:'沟通协作', weight:20, threshold:70},
-        ]
-      },
-    ],
-    student_classes: [
-      {id:1, name:'软件技术2401班', major:'软件技术', grade:'2024级'}
-    ],
-    enterprise_evaluation: null,
-  }
-}
 function seedEvalFormFrom(row: any, ee: any) {
-  // 已有企业评价 → 回填
   if (ee?.dimension_scores?.length) {
     evalDims.value = ee.dimension_scores.map((d: any) => ({
       name: d.name || '', score: Number(d.score) || 0, reason: d.reason || '',
     }))
     activeEvalId.value = ee.id ?? null
   } else {
-    // 无：优先岗位推荐维度，次 AI/教师维度 union
     const dims: any[] = []
     const fromJob = (detail.value?.available_jobs || [])
       .find((j: any) => j.id === evalMatchedJobId.value || (!evalMatchedJobId.value && j))
@@ -779,30 +734,10 @@ async function loadCompare(subId: number) {
     compareData.value = data?.data || data || { parties:[], dimension_breakdown:[], summary:null }
     compareLoaded.value = true
   } catch (e) {
-    // Mock 一份用于 UI 展示效果
-    compareData.value = mockCompare()
+    compareData.value = { parties:[], dimension_breakdown:[], summary:null }
     compareLoaded.value = true
   } finally {
     compareLoading.value = false
-  }
-}
-function mockCompare() {
-  return {
-    parties: [
-      { role:'ai',        label:'DeepSeek AI 自动评价', total: 86, comment:'项目较完整，组件拆分清晰。异常处理与边界场景覆盖不足。'},
-      { role:'teacher',   label:'李老师 · 授课教师复评', total:90, comment:'完成度高，课上提问表现好，课堂答辩表达清楚。'},
-      { role:'enterprise',label:'字节跳动·技术主管 企业终评', total: evalDimScoreSum.value || 82, comment: evalComment.value || '框架掌握尚可，项目工程化待强化。' },
-    ],
-    dimension_breakdown: [
-      { name:'功能完整性', ai_score:88, teacher_score:92, enterprise_score:85, max_diff:7, flag:'ok' },
-      { name:'代码规范性', ai_score:82, teacher_score:88, enterprise_score:78, max_diff:10, flag:'info', warning:'代码规范性维度三方差异超过 10 分，请注意对齐评价标准'},
-      { name:'技术选型/匹配度', ai_score:90, teacher_score:89, enterprise_score:65, max_diff:25, flag:'warning', warning:'技术匹配度维度三方差异超过 20 分，建议复核'},
-      { name:'文档与说明', ai_score:84, teacher_score:90, enterprise_score:80, max_diff:10, flag:'info'},
-    ],
-    summary: {
-      score_spread: 8, consistency_index: 0.78,
-      max_difference_dimension: '技术选型/匹配度', max_difference: 25, needs_review: true,
-    }
   }
 }
 
@@ -829,12 +764,10 @@ async function submitEval() {
     } else {
       resp = await axios.post(`${API_BASE}/api/enterprise/evaluations`, payload, { headers })
     }
-    // 刷新列表 + 详情
     await fetchList()
     const refreshed = list.value.find((r: any) => (r.submission_id || r.id) === activeId.value)
     if (refreshed) { activeSubmission.value = refreshed }
     evalDirty.value = false
-    // 如果列表没拉到 enterprise_evaluation，手动回填 status
     if (activeSubmission.value && activeSubmission.value.evaluation_status !== 'done') {
       activeSubmission.value.evaluation_status = 'done'
       activeSubmission.value.enterprise_evaluation = {
@@ -842,19 +775,10 @@ async function submitEval() {
       }
     }
     alert(`✅ ${activeEvalId.value ? '已更新企业评价' : '企业评价提交成功'}（均分 ${evalDimScoreSum.value}）`)
-    // 如果三方对比刷新
     await loadCompare(activeId.value!)
   } catch (e: any) {
     const msg = e?.response?.data?.detail || e?.message || '提交失败'
-    alert(`提交失败：${msg}\n（前端演示模式下该条目标记为已评价（mock）`)
-    // mock 模式：手动让按钮仍记为已评价
-    if (activeSubmission.value) {
-      activeSubmission.value.evaluation_status = 'done'
-      activeSubmission.value.enterprise_evaluation = { id: Date.now(), total_score: evalDimScoreSum.value }
-      await fetchList()
-    }
-    compareData.value = mockCompare()
-    compareLoaded.value = true
+    alert(`提交失败：${msg}\n（请确认后端服务已启动，且当前为企业导师账号）`)
   } finally {
     submitting.value = false
   }
@@ -867,9 +791,12 @@ onMounted(fetchList)
 </script>
 
 <style scoped>
-.chip-mag-active {
-  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
-  color: #fff;
-  border-color: transparent;
+/* 保留原有动画 & 深度样式 */
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 </style>

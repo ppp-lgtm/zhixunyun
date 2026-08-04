@@ -11,7 +11,7 @@
         <!-- Brand Mark + Text -->
         <div class="brand-mag">
           <div class="brand-mark-mag">
-            <span style="position:relative;z-index:1">智讯</span>
+            <img src="../img/logo.png" alt="智讯Logo" style="position:relative;z-index:1;height:100%;width:auto;">
           </div>
           <div class="brand-text-mag">
             <b>ZHI · XUN · YUN</b>
@@ -19,23 +19,10 @@
           </div>
         </div>
 
-        <!-- 主导航（桌面） -->
+        <!-- 主导航（桌面） · 已按用户要求移除导航链接（2026-07-31）
+             导航入口统一通过左侧快捷目录访问
+        -->
         <nav class="nav-mag">
-          <router-link to="/app" class="nav-link-mag">
-            <Icon icon="mdi:home-variant-outline" class="mr-1" /> 工作台
-          </router-link>
-          <router-link v-if="user?.role==='student'" to="/app/student-tasks" class="nav-link-mag">
-            <Icon icon="mdi:file-document-outline" class="mr-1" /> 提交任务
-          </router-link>
-          <router-link v-if="user?.role==='teacher'" to="/app/task-manage" class="nav-link-mag">
-            <Icon icon="mdi:clipboard-text-outline" class="mr-1" /> 任务管理
-          </router-link>
-          <router-link v-if="user?.role==='enterprise'" to="/app/enterprise/evaluations" class="nav-link-mag">
-            <Icon icon="mdi:star-four-points-outline" class="mr-1" /> 企业评价
-          </router-link>
-          <router-link to="/app/statistics" class="nav-link-mag">
-            <Icon icon="mdi:chart-box-outline" class="mr-1" /> 数据分析
-          </router-link>
           <router-link v-if="!user" to="/login" class="nav-pill-mag">
             进入平台 →
           </router-link>
@@ -60,9 +47,9 @@
                     <span class="font-display text-ink tracking-wider">消息通知</span>
                     <span class="tag ac" v-if="notifyCount">{{ notifyCount }} 未读</span>
                   </div>
-                  <div v-if="notifications.length === 0" class="text-center py-10 text-ink-3">
-                    <Icon icon="mdi:bell-off-outline" class="text-3xl mb-2" />
-                    <p class="font-sub text-sm">暂无新消息</p>
+                  <div v-if="notifications.length === 0" class="flex flex-col items-center justify-center py-10 text-ink-3">
+                    <Icon icon="mdi:bell-off-outline" class="text-3xl mb-3 block" />
+                    <p class="font-sub text-sm text-center">暂无新消息</p>
                   </div>
                   <div v-else class="max-h-72 overflow-y-auto">
                     <div
@@ -143,35 +130,9 @@
         </div>
       </div>
 
-      <!-- ═══ Chip Anchor 导航条 ═══ -->
-      <div class="chip-nav-mag">
-        <router-link to="/app" class="chip-mag" :class="{active: currentPath==='/app'}"><b>00</b>工作台总览</router-link>
-
-        <!-- 学生 chips -->
-        <template v-if="user?.role==='student'">
-          <router-link to="/app/student-tasks" class="chip-mag" :class="{active: currentPath.startsWith('/app/student-tasks')}"><b>01</b>提交任务</router-link>
-          <router-link to="/app/my-classes" class="chip-mag" :class="{active: currentPath.startsWith('/app/my-classes')}"><b>02</b>我的班级</router-link>
-          <router-link to="/app/my-scores" class="chip-mag" :class="{active: currentPath.startsWith('/app/my-scores')}"><b>03</b>我的成绩</router-link>
-          <router-link to="/app/statistics" class="chip-mag" :class="{active: currentPath.startsWith('/app/statistics')}"><b>04</b>数据分析</router-link>
-        </template>
-
-        <!-- 教师 chips -->
-        <template v-if="user?.role==='teacher'">
-          <router-link to="/app/task-manage" class="chip-mag" :class="{active: currentPath.startsWith('/app/task-manage')}"><b>01</b>任务管理</router-link>
-          <router-link to="/app/class-manage" class="chip-mag" :class="{active: currentPath.startsWith('/app/class-manage')}"><b>02</b>班级管理</router-link>
-          <router-link to="/app/criteria" class="chip-mag" :class="{active: currentPath.startsWith('/app/criteria')}"><b>03</b>评价标准</router-link>
-          <router-link to="/app/statistics" class="chip-mag" :class="{active: currentPath.startsWith('/app/statistics')}"><b>04</b>数据分析</router-link>
-        </template>
-
-        <!-- 企业 chips -->
-        <template v-if="user?.role==='enterprise'">
-          <router-link to="/app/enterprise/dashboard" class="chip-mag" :class="{active: currentPath==='/app/enterprise/dashboard'}"><b>E1</b>企业总览</router-link>
-          <router-link to="/app/enterprise/jobs" class="chip-mag" :class="{active: currentPath.startsWith('/app/enterprise/jobs')}"><b>E2</b>岗位管理</router-link>
-          <router-link to="/app/enterprise/evaluations" class="chip-mag" :class="{active: currentPath.startsWith('/app/enterprise/evaluations')}"><b>E3</b>企业评价</router-link>
-          <router-link to="/app/enterprise/compare" class="chip-mag" :class="{active: currentPath.startsWith('/app/enterprise/compare')}"><b>E4</b>三方对比</router-link>
-          <router-link to="/app/enterprise/matching" class="chip-mag" :class="{active: currentPath.startsWith('/app/enterprise/matching')}"><b>E5</b>岗位匹配</router-link>
-        </template>
-      </div>
+      <!-- ═══ Chip Anchor 导航条 · 已按用户要求移除（2026-07-31）
+           导航入口统一通过左侧快捷目录访问
+      -->
     </div>
 
     <!-- ═══ 主体 · 两栏：左锚点菜单 + 右内容 ═══ -->
@@ -189,7 +150,7 @@
           </div>
 
           <div class="mt-3 flex flex-col gap-1.5">
-            <router-link to="/app" class="side-item-mag" :class="{active: currentPath==='/app'}">
+            <router-link v-if="user?.role !== 'enterprise'" to="/app" class="side-item-mag" :class="{active: currentPath==='/app'}">
               <Icon icon="mdi:home-variant-outline" class="side-icon-mag" />
               <span>系统首页</span>
             </router-link>
@@ -208,6 +169,10 @@
               <router-link to="/app/my-scores" class="side-item-mag" :class="{active: currentPath.startsWith('/app/my-scores')}">
                 <Icon icon="mdi:chart-line-variant" class="side-icon-mag" />
                 <span>我的成绩</span>
+              </router-link>
+              <router-link to="/app/interview-invitations" class="side-item-mag" :class="{active: currentPath.startsWith('/app/interview-invitations')}">
+                <Icon icon="mdi:calendar-clock-outline" class="side-icon-mag" />
+                <span>面试邀约</span>
               </router-link>
             </template>
 
@@ -253,12 +218,14 @@
               </router-link>
             </template>
 
-            <!-- 通用 -->
-            <div class="side-group-mag">数据分析</div>
-            <router-link v-if="user" to="/app/statistics" class="side-item-mag" :class="{active: currentPath.startsWith('/app/statistics')}">
-              <Icon icon="mdi:chart-box-outline" class="side-icon-mag" />
-              <span>数据统计分析</span>
-            </router-link>
+            <!-- 通用：企业端无教学统计视图，隐藏"数据分析"分组与入口 -->
+            <template v-if="user?.role !== 'enterprise'">
+              <div class="side-group-mag">数据分析</div>
+              <router-link v-if="user" to="/app/statistics" class="side-item-mag" :class="{active: currentPath.startsWith('/app/statistics')}">
+                <Icon icon="mdi:chart-box-outline" class="side-icon-mag" />
+                <span>数据统计分析</span>
+              </router-link>
+            </template>
           </div>
 
           <!-- 底部状态 -->
@@ -273,21 +240,18 @@
 
       <!-- 右：内容区 -->
       <main class="content-mag">
-        <!-- 页面标题栏 -->
-        <div v-if="pageTitle" class="mb-6">
-          <div class="flex items-center gap-2 text-sm mb-1">
-            <span class="font-mono text-ink-3 uppercase tracking-wider text-xs">Home</span>
-            <Icon v-if="pageTitle" icon="mdi:chevron-right" class="text-line text-xs" />
-            <span v-if="pageTitle" class="font-sub text-ink font-semibold">{{ pageTitle }}</span>
-          </div>
-          <h2 class="font-display tracking-wider text-ink-2" style="font-size:clamp(26px,3.2vw,38px);line-height:1.05">
-            {{ pageTitle }}
-          </h2>
-        </div>
+        <!-- 页面标题栏 · 已按用户要求移除（2026-07-31）
+             避免与各内部页面自身的 h1 标题/描述双重展示，造成 Home / 企业评价 / 企业评价 的重复文字。
+        -->
 
-        <router-view v-slot="{ Component }">
-          <transition name="fade-slide" mode="out-in">
-            <component :is="Component" class="page-enter" />
+        <router-view v-slot="{ Component, route: r }">
+          <transition name="fade-slide">
+            <!--
+              强制用 fullPath 做 key：
+              · 从 /app/my-scores 跳到 /app/result/:id 时，组件一定是销毁-重建，onMounted 必定触发
+              · 从 /app/result/1 跳到 /app/result/2 时，也会重建（详情页无需状态缓存），避免复用导致白屏/不渲染
+            -->
+            <component :is="Component" :key="r.fullPath" class="page-enter" />
           </transition>
         </router-view>
       </main>
@@ -368,10 +332,11 @@ const checkNotifications = async () => {
   if (!user.value) return
   try {
     let url = ''
+    const readSince = localStorage.getItem(`notifyReadAt_${user.value.id}`) || '0'
     if (user.value.role === 'student') {
-      url = `${API_BASE}/api/notifications/student/${user.value.id}`
+      url = `${API_BASE}/api/notifications/student/${user.value.id}?read_since=${readSince}`
     } else if (user.value.role === 'teacher') {
-      url = `${API_BASE}/api/notifications/teacher/${user.value.id}`
+      url = `${API_BASE}/api/notifications/teacher/${user.value.id}?read_since=${readSince}`
     } else if (user.value.role === 'enterprise') {
       notifyCount.value = 0
       notifications.value = []
@@ -390,6 +355,7 @@ const checkNotifications = async () => {
 const handleNotification = (n: any) => {
   notifyPopoverVisible.value = false
   notifyCount.value = 0
+  localStorage.setItem(`notifyReadAt_${user.value.id}`, Date.now().toString())
   if (n.type === 'new_task' && n.task_id) {
     router.push('/app/student-tasks')
   } else if (n.type === 'submission' || n.type === 'unrated') {
@@ -603,7 +569,7 @@ const logout = () => {
 /* Side card */
 .side-mag {
   position: sticky;
-  top: 140px;
+  top: 96px;
 }
 
 .side-group-mag {
@@ -681,49 +647,16 @@ const logout = () => {
   align-items: center;
   gap: 10px;
 }
-.section-label::before {
-  content: "";
-  width: 28px;
-  height: 2px;
-  background: var(--seal);
-}
 
-/* ── Tags ── */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--paper-2);
-  color: var(--ink-3);
-}
-.tag.ok    { background: var(--jade-soft);   color: var(--jade-dark);   border-color: #B8E7C7; }
-.tag.warn  { background: var(--amber-soft);  color: var(--amber-dark);  border-color: #EED48E; }
-.tag.bad   { background: var(--signal-soft); color: var(--signal-dark); border-color: #F0B3B9; }
-.tag.co    { background: var(--cobalt-soft); color: var(--cobalt-dark); border-color: #B8C4F5; }
-.tag.ac    { background: var(--seal-soft);   color: var(--seal-dark);   border-color: #F4B797; }
-
-/* Card mag (replicated here for scoped) */
+/* Card mag (replicated scoped - 纯色化：移除渐变顶条) */
 .card-mag {
-  background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.78));
+  background: #FFFFFF;
   border: 1px solid var(--line);
   border-radius: 22px;
   padding: 22px;
   box-shadow: var(--shadow-2);
-  backdrop-filter: blur(6px);
   position: relative;
   overflow: hidden;
-}
-.card-mag::after {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--seal), transparent 60%);
-  opacity: .7;
 }
 
 /* Transition */

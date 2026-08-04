@@ -10,7 +10,7 @@
       <div class="topbar-inner-mag">
         <div class="brand-mag">
           <div class="brand-mark-mag">
-            <span style="position:relative;z-index:1">智讯</span>
+            <span style="position:relative;z-index:1">知训云</span>
           </div>
           <div class="brand-text-mag">
             <b>ZHI · XUN · YUN</b>
@@ -43,7 +43,7 @@
           <em class="accent-text">印章</em>。
         </h1>
         <p class="hero-sub">
-          「智讯云」智能实训评价平台：把实训批改从"下载 zip → 拖 IDE → 写评语"的机械劳动，搬进一个
+          「知训云」智能实训评价平台：把实训批改从"下载 zip → 拖 IDE → 写评语"的机械劳动，搬进一个
           <b class="hero-bold">编辑杂志式 × 科技可视化</b> 的操作台。学生按步骤提交证据，AI 给每条步骤打分；老师和企业方只需聚焦差异点。
         </p>
 
@@ -73,107 +73,109 @@
         </div>
       </div>
 
-      <!-- 右：印章 + 登录卡 -->
+      <!-- 右：三栏身份选择 + 选中角色专属登录表单（角色隔离） -->
       <div class="hero-right">
-        <!-- 绯红印章分数环（对齐 demo .seal） -->
-        <div class="seal-big" title="实训总评分 · 总评 A-">
-          <span class="seal-tack tl"></span>
-          <span class="seal-tack br"></span>
-          <div class="seal-inner">
-            <div class="ring-num">92·4</div>
-            <div class="ring-label">Overall Grade</div>
-            <div class="ring-sub">— 实训总评 · 2026 —</div>
-          </div>
-        </div>
-
-        <!-- 登录卡（对齐 demo .login-card） -->
-        <div class="card-mag login-card">
-          <div class="head">
-            <div>
-              <span class="section-label" style="margin:0;letter-spacing:2px;font-size:11px">Portal / Sign in</span>
-              <h3 class="card-title">进入你的工作台</h3>
+        <!-- ① 身份选择（三张大卡堆叠式，可切换；URL hash 直达：#student / #teacher / #enterprise） -->
+        <div class="role-selector" :class="{'is-chosen': chosenRole !== null}">
+          <div
+            v-for="role in roles"
+            :key="role.key"
+            class="role-card"
+            :class="['role-'+role.key, {'active': chosenRole === role.key, 'inactive': chosenRole !== null && chosenRole !== role.key}]"
+            @click="chooseRole(role.key, $event)"
+          >
+            <div class="role-head">
+              <div class="role-ico" aria-hidden="true">
+                <!-- SVG 角色图标（内嵌，无外部资源） -->
+                <svg v-if="role.key === 'student'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8.5l9-4.5 9 4.5-9 4.5-9-4.5z"/><path d="M6.5 10.5v4.6c0 1.2 2.5 2.2 5.5 2.4"/><path d="M17.5 10.5v1.8"/><path d="M21 8.5v4"/></svg>
+                <svg v-else-if="role.key === 'teacher'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h13v12H4z"/><path d="M17 9h3v9h-3"/><path d="M7 9h6M7 12h6M7 15h4"/></svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20h16V10H4zM3 20h1v-9H3zM20 20h1v-9h-1zM8 10V7l2-3h4l2 3v3"/><path d="M8 14h2M14 14h2M8 17h2M14 17h2"/></svg>
+              </div>
+              <div class="role-text">
+                <div class="role-chip">{{ role.chip }}</div>
+                <div class="role-title">{{ role.title }}</div>
+              </div>
+              <div class="role-mark">
+                <span v-if="chosenRole === role.key">●</span>
+                <span v-else>○</span>
+              </div>
             </div>
-            <span class="tag co">SSO · Lv.2 加密</span>
-          </div>
-
-          <!-- 角色切换 Tabs（3 栏，对齐 demo） -->
-          <div class="role-tabs">
-            <button
-              type="button"
-              @click="loginMode = 'student'"
-              :class="loginMode==='student' ? 'on' : ''"
-            >
-              <Icon icon="mdi:account-school-outline" class="mr-1.5" />
-              学生
-            </button>
-            <button
-              type="button"
-              @click="loginMode = 'teacher'"
-              :class="loginMode==='teacher' ? 'on' : ''"
-            >
-              <Icon icon="mdi:teacher-outline" class="mr-1.5" />
-              教师
-            </button>
-            <button
-              type="button"
-              @click="loginMode = 'enterprise'"
-              :class="loginMode==='enterprise' ? 'on' : ''"
-            >
-              <Icon icon="mdi:office-building-outline" class="mr-1.5" />
-              企业
-            </button>
-          </div>
-
-          <el-form :model="form" :rules="rules" ref="formRef" class="mt-3">
-            <div class="field">
-              <label>身份 ID / 用户名</label>
-              <el-input
-                v-model="form.username"
-                placeholder="请输入用户名或学号/工号"
-                size="large"
-                clearable
-              />
+            <div class="role-slogan" :class="{'is-collapsed': chosenRole !== null && chosenRole !== role.key}">
+              {{ role.slogan }}
             </div>
 
-            <div class="field">
-              <label>密钥 / Password</label>
-              <el-input
-                v-model="form.password"
-                type="password"
-                placeholder="请输入密码"
-                size="large"
-                show-password
-                @keyup.enter="login"
-              />
-            </div>
+            <!-- ② 专属登录表单（仅选中角色展开；每个角色独立表单域独立验证逻辑；账号与角色强绑定） -->
+            <Transition name="expand" appear>
+              <div v-if="chosenRole === role.key" class="role-form">
+                <div class="form-divider" aria-hidden="true"></div>
 
-            <div class="toggle-row">
-              <label class="flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" checked class="w-4 h-4 accent-seal" />
-                <span>保持本次会话</span>
-              </label>
-              <a href="#" class="forgot-link">忘记身份？</a>
-            </div>
+                <div class="form-eyebrow">
+                  <span class="dot"></span>
+                  <span class="eyebrow-text">{{ role.eyebrow }}</span>
+                </div>
 
-            <div class="login-foot">
-              <button
-                type="button"
-                @click="login"
-                :disabled="loading"
-                class="btn-mag"
-                style="padding:12px 26px"
-              >
-                <span v-if="loading" class="w-5 h-5 border-2 border-paper/30 border-t-paper rounded-full animate-spin"></span>
-                <Icon v-else icon="mdi:login" class="text-base" />
-                <span>{{ loading ? '登录中...' : '进入工作台' }}</span>
-              </button>
-              <span class="meta-note">v3.0.0 · build 20260729</span>
-            </div>
-          </el-form>
+                <el-form
+                  :model="formByRole[role.key]"
+                  :rules="rules"
+                  :ref="(el: any) => setFormRef(role.key, el)"
+                  class="mt-3"
+                  @submit.prevent="submitLogin(role.key)"
+                >
+                  <div class="field">
+                    <label>{{ role.usernameLabel }}</label>
+                    <el-input
+                      v-model="formByRole[role.key].username"
+                      :placeholder="role.usernamePlaceholder"
+                      size="large"
+                      clearable
+                      :ref="(el: any) => setUsernameInputRef(role.key, el)"
+                    />
+                  </div>
 
-          <div class="register-row">
-            <span>还没有账号？</span>
-            <el-button link type="primary" @click="showRegister = true" class="!font-sub !text-base !p-0 !h-auto">立即注册</el-button>
+                  <div class="field">
+                    <label>{{ role.passwordLabel }}</label>
+                    <el-input
+                      v-model="formByRole[role.key].password"
+                      type="password"
+                      placeholder="请输入密码"
+                      size="large"
+                      show-password
+                      @keyup.enter="submitLogin(role.key)"
+                    />
+                  </div>
+
+                  <div class="toggle-row">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" v-model="keepSession" class="w-4 h-4" :style="{accentColor: role.accent}" />
+                      <span>保持本次会话</span>
+                    </label>
+                    <a href="#" class="forgot-link">忘记密码？</a>
+                  </div>
+
+                  <div class="login-foot">
+                    <button
+                      type="button"
+                      @click="submitLogin(role.key)"
+                      :disabled="loadingByRole[role.key]"
+                      class="btn-mag btn-role"
+                      :style="{'--btn-bg': role.accent}"
+                    >
+                      <span v-if="loadingByRole[role.key]" class="w-5 h-5 border-2 border-paper/30 border-t-paper rounded-full animate-spin"></span>
+                      <Icon v-else icon="mdi:login" class="text-base" />
+                      <span>{{ loadingByRole[role.key] ? '正在验证...' : role.ctaText }}</span>
+                    </button>
+                    <span class="meta-note">v3.0 · 仅限{{ role.title }}账号</span>
+                  </div>
+                </el-form>
+
+                <div class="register-row">
+                  <span>还没有{{ role.title }}账号？</span>
+                  <el-button link type="primary" @click="openRegister(role.key)" class="!font-sub !text-base !p-0 !h-auto role-link" :style="{color: role.accent}">
+                    立即注册 →
+                  </el-button>
+                </div>
+              </div>
+            </Transition>
           </div>
         </div>
       </div>
@@ -293,38 +295,101 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
 
+type RoleKey = 'student' | 'teacher' | 'enterprise'
+
 const router = useRouter()
 const route = useRoute()
-const loading = ref(false)
-const showRegister = ref(false)
-const regLoading = ref(false)
-const formRef = ref()
-const regFormRef = ref()
-const loginMode = ref<'student' | 'teacher' | 'enterprise'>('student')
 
-const form = reactive({ username: '', password: '' })
+// ============================================================
+// 三个角色：独立配置（颜色、图标、占位符、文案）
+// ============================================================
+const roles = [
+  {
+    key: 'student' as RoleKey,
+    chip: '01 · STUDENT',
+    title: '学生',
+    accent: '#C99A2E',        // 琥珀金（杂志风）
+    slogan: '交作业 · 看批改 · 追进度 —— 提交即得 AI 即时反馈',
+    eyebrow: '学生端入口 · STUDENT PORTAL',
+    usernameLabel: '学号 / 用户名',
+    usernamePlaceholder: '请输入学号或登录用户名',
+    passwordLabel: '登录密码',
+    ctaText: '进入实训工作台',
+  },
+  {
+    key: 'teacher' as RoleKey,
+    chip: '02 · TEACHER',
+    title: '教师',
+    accent: '#3D5AFE',        // 冷钴蓝
+    slogan: '发任务 · 评作业 · 出报表 —— AI 初评 + 教师人工复评',
+    eyebrow: '教师端入口 · FACULTY PORTAL',
+    usernameLabel: '工号 / 用户名',
+    usernamePlaceholder: '请输入工号或登录用户名',
+    passwordLabel: '登录密码',
+    ctaText: '进入教学管理台',
+  },
+  {
+    key: 'enterprise' as RoleKey,
+    chip: '03 · ENTERPRISE',
+    title: '企业',
+    accent: '#FF5A1F',        // 绯红印章
+    slogan: '发岗位 · 挖人才 · 做终评 —— 企业方导师独立视角',
+    eyebrow: '企业端入口 · ENTERPRISE PORTAL',
+    usernameLabel: 'HR 账号 / 邮箱',
+    usernamePlaceholder: '请输入企业 HR 账号或邮箱',
+    passwordLabel: '登录密码',
+    ctaText: '进入企业招聘台',
+  },
+]
+
+// ============================================================
+// 状态：每个角色独立表单 / 独立 loading / 独立 ref
+// ============================================================
+const chosenRole = ref<RoleKey | null>(null)
+const keepSession = ref(true)
+
+const formByRole = reactive<Record<RoleKey, { username: string; password: string }>>({
+  student:   { username: '', password: '' },
+  teacher:   { username: '', password: '' },
+  enterprise:{ username: '', password: '' },
+})
+const loadingByRole = reactive<Record<RoleKey, boolean>>({
+  student: false,
+  teacher: false,
+  enterprise: false,
+})
+const formRefs: Partial<Record<RoleKey, any>> = {}
+const setFormRef = (k: RoleKey, el: any) => { if (el) formRefs[k] = el }
+// username 输入框的 element-plus 组件实例（不是 native input），
+// 用它的 .focus() 最稳定，避免 document.querySelector 选择器乱抢第一个 INPUT
+const usernameInputRefs: Partial<Record<RoleKey, any>> = {}
+const setUsernameInputRef = (k: RoleKey, el: any) => { if (el) usernameInputRefs[k] = el }
+
 const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 }
 
+// 注册弹窗复用原逻辑（根据点击的角色预填）
+const showRegister = ref(false)
+const regLoading = ref(false)
+const regFormRef = ref()
 const regForm = reactive({
   username: '',
   password: '',
-  role: 'student' as 'student' | 'teacher' | 'enterprise',
+  role: 'student' as RoleKey,
   real_name: '',
   user_number: '',
   enterprise_name: '',
   contact_phone: ''
 })
-
 const regRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
@@ -356,19 +421,98 @@ const regRules = {
   }]
 }
 
-const login = async () => {
-  const valid = await formRef.value.validate().catch(() => false)
+// ============================================================
+// 选择角色 + hash 直达
+// ============================================================
+/** 最近一次聚焦 username 输入框的 timer id（同一角色重复进入会被 clear，
+ *  避免用户点击密码框时被"上一次没来得及执行的 focus 任务"抢焦点）。 */
+let _focusUsernameTimer: number | null = null
+/** 最近一次通过 replaceState 改 hash 写进去的角色 — 用来打破
+ *  replaceState → watch(hash) → chooseRole(同一个 role) 这种无意义的自触发循环，
+ *  否则每次它会额外排一个 120ms 的 focus(username)，把用户在密码框的光标抢走。 */
+let _selfWrittenHashRole: RoleKey | null = null
+
+function chooseRole(role: RoleKey, evt?: MouseEvent) {
+  // ---- 短路 1：点击来源于 el-input 内部（用户在填表单），不是切角色的动作，完全忽略 ----
+  if (evt?.target instanceof HTMLElement) {
+    const t = evt.target as HTMLElement
+    if (t.closest('.el-input') || t.closest('.role-form') || t.closest('input') || t.closest('button') || t.closest('a')) {
+      return
+    }
+  }
+
+  // ---- 短路 2：同一个角色没真正切换，不做任何副作用 ----
+  if (chosenRole.value === role) return
+  chosenRole.value = role
+
+  // 同步更新 URL hash（用于直达链接 / 刷新后保持）。
+  // 写之前先把目标角色记下来，这样紧接着触发的 watch(window.location.hash)
+  // 能一眼识别"这是我自己刚刚写的，不应该再重新 chooseRole / 再排 focus"。
+  if (window.location.hash.replace(/^#/, '') !== role) {
+    _selfWrittenHashRole = role
+    window.history.replaceState(null, '', `#${role}`)
+    // 一个微任务后就清掉这个标记，避免下次用户手改 URL 直达别的角色被误忽略
+    queueMicrotask(() => { if (_selfWrittenHashRole === role) _selfWrittenHashRole = null })
+  }
+
+  // 切换角色后才需要"自动聚焦 username 框"（是合理 UX）；
+  // 用 setTimeout 120ms 等 expand 动画跑完，但必须：
+  //   · 用 element-plus 实例 ref 调用，不做全局 document.querySelector（稳定）
+  //   · 如果前一个 timer 还没执行就清掉（避免同一角色重复排队抢焦点）
+  if (_focusUsernameTimer) {
+    window.clearTimeout(_focusUsernameTimer)
+    _focusUsernameTimer = null
+  }
+  _focusUsernameTimer = window.setTimeout(() => {
+    const comp = usernameInputRefs[role]
+    if (comp && typeof comp.focus === 'function') comp.focus()
+    _focusUsernameTimer = null
+  }, 120)
+}
+
+function openRegister(role: RoleKey) {
+  regForm.role = role
+  showRegister.value = true
+}
+
+// URL hash 变更 / 初始化自动选角色
+watch(
+  () => window.location.hash,
+  () => {
+    const h = window.location.hash.replace(/^#/, '') as RoleKey
+    if (!(['student', 'teacher', 'enterprise'] as RoleKey[]).includes(h)) return
+    // 短路：这个 hash 恰恰就是 chooseRole 刚刚自己 replaceState 写进去的，
+    //       那就不要再重新 chooseRole —— 否则就是一次"假切换"，又会排一个
+    //       focus(username)，把用户点到密码框的光标抢走。
+    if (_selfWrittenHashRole === h) return
+    chooseRole(h)
+  }
+)
+
+// ============================================================
+// 登录提交：角色强隔离
+// · 学生/教师：POST /api/auth/login 带 expected_role
+// · 企业：POST /api/enterprise/login（后端自带角色校验）
+// 任何失败统一显示「用户名或密码错误」
+// ============================================================
+async function submitLogin(role: RoleKey) {
+  const ref = formRefs[role]
+  if (!ref) return
+  const valid = await ref.validate().catch(() => false)
   if (!valid) return
 
-  loading.value = true
+  loadingByRole[role] = true
   try {
-    const url = loginMode.value === 'enterprise'
-      ? `${API_BASE}/api/enterprise/login`
-      : `${API_BASE}/api/auth/login`
-
-    const payload: Record<string, string> = {
-      username: form.username,
-      password: form.password,
+    const payload: Record<string, any> = {
+      username: formByRole[role].username.trim(),
+      password: formByRole[role].password,
+    }
+    let url: string
+    if (role === 'enterprise') {
+      url = `${API_BASE}/api/enterprise/login`
+    } else {
+      url = `${API_BASE}/api/auth/login`
+      payload.expected_role = role   // 告诉后端：这个入口只允许该角色登录
     }
 
     const res = await axios.post(url, payload)
@@ -378,9 +522,10 @@ const login = async () => {
         ...(res.data.user || {}),
         ...(res.data.enterprise ? { enterprise: res.data.enterprise } : {}),
       } as any
-      if (!user.role) user.role = loginMode.value
+      if (!user.role) user.role = role
       localStorage.setItem('user', JSON.stringify(user))
       ElMessage.success(`欢迎，${user.real_name || user.username}`)
+
       const redirect = route.query.redirect as string | undefined
       if (redirect) {
         router.push(redirect)
@@ -395,24 +540,30 @@ const login = async () => {
     const detail = err.response?.data?.detail
     let msg = '登录失败，请稍后重试'
     if (status === 0 || !err.response) {
-      msg = '无法连接后端服务，请确认 127.0.0.1:8000 是否启动（响应体为空）'
+      msg = '无法连接后端服务，请确认 127.0.0.1:8000 是否已启动'
     } else if (status === 422) {
-      msg = `提交字段与后端不一致（HTTP 422）：${
+      msg = `请求字段格式错误：${
         Array.isArray(err.response.data?.detail)
           ? err.response.data.detail.map((x: any) => x.msg || JSON.stringify(x)).join('; ')
           : detail || JSON.stringify(err.response.data)
       }`
     } else if (detail) {
-      msg = detail
+      // ⚠️  严格按用户要求：不暴露"此账号属XX端"信息
+      // 后端对所有 401 已统一输出「用户名或密码错误」，这里直接透传
+      msg = String(detail)
     } else if (err.message) {
       msg = err.message
     }
     ElMessage.error(msg)
   } finally {
-    loading.value = false
+    loadingByRole[role] = false
   }
 }
 
+// ============================================================
+// 注册：复用原逻辑（根据角色选对应 API）
+// 注册成功后：自动回填选中角色表单
+// ============================================================
 const register = async () => {
   const valid = await regFormRef.value.validate().catch(() => false)
   if (!valid) return
@@ -451,8 +602,11 @@ const register = async () => {
     if (res.data.success) {
       ElMessage.success('注册成功，请登录')
       showRegister.value = false
-      form.username = regForm.username
-      loginMode.value = regForm.role
+      // 成功后：自动切到对应角色表单，并预填账号
+      chooseRole(regForm.role)
+      formByRole[regForm.role].username = regForm.username
+      formByRole[regForm.role].password = ''
+      // 清空
       regForm.username = ''
       regForm.password = ''
       regForm.real_name = ''
@@ -465,9 +619,9 @@ const register = async () => {
     const detail = err.response?.data?.detail
     let msg = '注册失败，请稍后重试'
     if (status === 0 || !err.response) {
-      msg = '无法连接后端服务（响应体为空），请启动后端 127.0.0.1:8000'
+      msg = '无法连接后端服务，请启动后端 127.0.0.1:8000'
     } else if (status === 422) {
-      msg = `提交字段与后端不一致（HTTP 422）：${
+      msg = `提交字段格式错误（HTTP 422）：${
         Array.isArray(err.response.data?.detail)
           ? err.response.data.detail.map((x: any) => x.msg || JSON.stringify(x)).join('; ')
           : detail || JSON.stringify(err.response.data)
@@ -481,11 +635,22 @@ const register = async () => {
   }
 }
 
-// 简单的进场动画：页面加载后给所有 hstat/feat-card 加 .on 类
+// ============================================================
+// onMounted：动画 + hash 直达
+// ============================================================
 onMounted(() => {
+  // ① 处理 URL hash：#student / #teacher / #enterprise 自动选对应角色
+  const hash = window.location.hash.replace(/^#/, '')
+  if ((['student', 'teacher', 'enterprise'] as RoleKey[]).includes(hash as RoleKey)) {
+    chooseRole(hash as RoleKey)
+  } else if (!hash && !window.location.pathname.includes('/login')) {
+    // 纯 /login 或 其他路径过来的 hash=hero 不选角色；让用户自己点
+  }
+
+  // ② 保留原进场动画（给 hstat/feat-card/hero-title 加延迟动画）
   setTimeout(() => {
-    document.querySelectorAll('.hstat, .feat-card, .hero-title, .seal-big, .login-card').forEach((el, i) => {
-      (el as HTMLElement).style.animationDelay = (i * 80) + 'ms'
+    document.querySelectorAll('.hstat, .feat-card, .hero-title, .role-card').forEach((el, i) => {
+      (el as HTMLElement).style.animationDelay = (i * 70) + 'ms'
       el.classList.add('mag-anim')
     })
   }, 50)
@@ -590,9 +755,8 @@ onMounted(() => {
   text-transform: uppercase; color: var(--seal);
   display: inline-flex; align-items: center; gap: 10px; margin-bottom: 14px;
 }
-.section-label::before { content: ""; width: 28px; height: 2px; background: var(--seal); }
 
-/* ── Hero 主视觉 ── */
+/* ── Hero 主视觉（移除印章后，左文右卡匀称对齐）── */
 .hero-sec {
   max-width: 1240px; margin: 0 auto;
   padding: 40px 28px 56px;
@@ -602,7 +766,7 @@ onMounted(() => {
   align-items: start;
 }
 
-.hero-left { padding: 22px 0 40px; }
+.hero-left { padding: 12px 0 40px; }
 .hero-title {
   font-family: var(--ff-display);
   font-size: clamp(48px, 7vw, 86px);
@@ -672,96 +836,209 @@ onMounted(() => {
 .btn-mag .arrow { display: inline-block; transition: transform .2s ease; }
 .btn-mag:hover .arrow { transform: translateX(3px); }
 
-/* ── Right column: Seal + Login card ── */
-.hero-right {
-  display: flex; flex-direction: column; align-items: center;
-}
-
-/* Seal 印章 */
-.seal-big {
-  position: relative;
-  aspect-ratio: 1 / 1;
-  border-radius: 50%;
-  width: min(260px, 78%);
-  margin-left: auto;
-  margin-right: auto;
-  background: radial-gradient(circle at 30% 28%, #FF8A5C 0%, var(--seal) 55%, var(--seal-dark) 100%);
-  color: white;
-  display: grid; place-items: center; text-align: center;
-  box-shadow: var(--shadow-3), inset 0 0 0 2px rgba(255,255,255,.35), inset 0 0 40px rgba(0,0,0,.22);
-  transform: rotate(-6deg);
-  opacity: 0; transform: rotate(-6deg) scale(0.9);
-  animation: sealPop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s forwards;
-}
-.seal-big::before {
-  content: ""; position: absolute; inset: 10%;
-  border-radius: 50%;
-  border: 1.5px dashed rgba(255,255,255,.6);
-}
-.seal-tack {
-  position: absolute; width: 16px; height: 16px; border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #fff 0%, #aaa 40%, #444 100%);
-  box-shadow: 0 2px 4px rgba(0,0,0,.4);
-}
-.seal-tack.tl { top: -8px; left: 28%; }
-.seal-tack.br { bottom: -6px; right: 30%; }
-.ring-num { font-family: var(--ff-display); font-size: 72px; line-height: 1; letter-spacing: 2px; }
-.ring-label { font-family: var(--ff-sub); font-size: 13px; letter-spacing: 4px; text-transform: uppercase; opacity: .92; margin-top: 4px; }
-.ring-sub { font-family: var(--ff-body); font-style: italic; opacity: .85; margin-top: 2px; }
-
-/* Login card */
-.login-card {
+/* ══════════════════════════════════════
+   · 右栏：身份选择器（方案 A：3 张堆叠式角色大卡）
+   · 每个角色独立配色/独立 slogan/独立表单展开
+   ══════════════════════════════════════ */
+.role-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   width: 100%;
-  margin-top: -40px;
+}
+
+.role-card {
+  background: #FFFFFF;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease,
+              border-color 0.25s ease, padding 0.25s ease,
+              background 0.25s ease;
   position: relative;
-  z-index: 2;
-  opacity: 0; transform: translateY(14px);
-  animation: revealIn 0.6s ease 0.2s forwards;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(14px);
+  animation: revealIn 0.6s ease forwards;
 }
-.head {
-  display: flex; justify-content: space-between;
-  align-items: flex-end; margin-bottom: 14px; gap: 12px;
+.role-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
 }
-.card-title {
+
+/* ——— 三色主题边框（通过左 border 2px 做角色暗示，不突兀）——— */
+.role-card.role-student    { border-left: 3px solid #C99A2E; }
+.role-card.role-teacher    { border-left: 3px solid #3D5AFE; }
+.role-card.role-enterprise { border-left: 3px solid #FF5A1F; }
+
+.role-card.inactive {
+  padding: 10px 20px;
+  opacity: 0.6;
+  box-shadow: none;
+}
+.role-card.inactive:hover {
+  opacity: 1;
+  transform: none;
+  box-shadow: var(--shadow-1);
+}
+
+.role-card.active {
+  padding: 22px 22px 18px;
+  border-color: var(--role-accent, var(--seal));
+  box-shadow: var(--shadow-3), 0 0 0 4px var(--role-ring, rgba(255,90,31,0.08));
+}
+
+.role-card.role-student.active    { --role-accent: #C99A2E; --role-ring: rgba(201,154,46,0.12); }
+.role-card.role-teacher.active    { --role-accent: #3D5AFE; --role-ring: rgba(61,90,254,0.12); }
+.role-card.role-enterprise.active { --role-accent: #FF5A1F; --role-ring: rgba(255,90,31,0.12); }
+
+/* —— 头部：图标 + chip + 标题 + 状态点 —— */
+.role-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+.role-ico {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: grid; place-items: center;
+  color: white;
+  box-shadow: var(--shadow-1);
+}
+.role-ico svg { width: 24px; height: 24px; }
+.role-card.role-student    .role-ico { background: linear-gradient(135deg, #E6B757, #C99A2E); }
+.role-card.role-teacher    .role-ico { background: linear-gradient(135deg, #6A84FF, #3D5AFE); }
+.role-card.role-enterprise .role-ico { background: linear-gradient(135deg, #FF8A5C, #FF5A1F); }
+
+.role-text { display: flex; flex-direction: column; line-height: 1.2; gap: 3px; }
+.role-chip {
+  font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: 2px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.role-title {
   font-family: var(--ff-display);
-  letter-spacing: 1px;
-  font-size: 22px;
-  margin-top: 2px;
+  font-size: 20px;
+  letter-spacing: 0.5px;
   color: var(--ink);
 }
+.role-mark {
+  font-size: 14px;
+  color: var(--line);
+  transition: color 0.2s;
+  line-height: 1;
+}
+.role-card.active .role-mark { color: var(--role-accent, var(--seal)); }
 
-/* Tag */
-.tag {
-  display: inline-flex; align-items: center;
-  font-family: var(--ff-mono); font-size: 11px;
-  padding: 3px 8px; border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--paper-2); color: var(--ink-3);
+/* —— 标语：未选中时折叠为 0（不占空间），选中或未选任何角色时展开 —— */
+.role-slogan {
+  font-family: var(--ff-sub);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  margin-top: 10px;
+  max-height: 60px;
+  opacity: 1;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease;
 }
-.tag.co { background: var(--cobalt-soft); color: var(--cobalt-dark); border-color: #B8C4F5; }
-
-/* Role tabs */
-.role-tabs {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 8px; margin-top: 16px;
-}
-.role-tabs button {
-  all: unset; cursor: pointer; text-align: center;
-  padding: 10px 8px; border-radius: var(--r-md);
-  border: 1px solid var(--line); background: var(--paper);
-  font-family: var(--ff-sub); font-size: 13px;
-  color: var(--ink-3); transition: all .2s;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.role-tabs button:hover {
-  border-color: var(--seal); background: white;
-}
-.role-tabs button.on {
-  background: var(--ink); color: var(--paper);
-  border-color: var(--ink); box-shadow: var(--shadow-1);
+.role-slogan.is-collapsed {
+  max-height: 0px;
+  margin-top: 0px;
+  opacity: 0;
 }
 
-/* Form fields */
+/* —— 展开后的专属表单 —— */
+.role-form {
+  margin-top: 4px;
+}
+.form-divider {
+  height: 1px;
+  background: linear-gradient(90deg, var(--line-soft), transparent);
+  margin: 14px -22px 12px;
+}
+.form-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--ff-mono); font-size: 10.5px;
+  letter-spacing: 2px; text-transform: uppercase;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.form-eyebrow .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--seal);
+  box-shadow: 0 0 0 3px var(--seal-soft);
+}
+.role-card.role-student    .form-eyebrow .dot { background: #C99A2E; box-shadow: 0 0 0 3px rgba(201,154,46,0.14); }
+.role-card.role-teacher    .form-eyebrow .dot { background: #3D5AFE; box-shadow: 0 0 0 3px rgba(61,90,254,0.14); }
+.role-card.role-enterprise .form-eyebrow .dot { background: #FF5A1F; box-shadow: 0 0 0 3px rgba(255,90,31,0.14); }
+
+/* 表单域 + 按钮：按角色色做 focus/hover */
+.role-card.role-student    .field :deep(.el-input__wrapper.is-focus) {
+  border-color: #C99A2E !important;
+  box-shadow: 0 0 0 4px rgba(201,154,46,0.14) !important;
+}
+.role-card.role-teacher    .field :deep(.el-input__wrapper.is-focus) {
+  border-color: #3D5AFE !important;
+  box-shadow: 0 0 0 4px rgba(61,90,254,0.14) !important;
+}
+.role-card.role-enterprise .field :deep(.el-input__wrapper.is-focus) {
+  border-color: #FF5A1F !important;
+  box-shadow: 0 0 0 4px rgba(255,90,31,0.14) !important;
+}
+
+/* 角色化 CTA 按钮 */
+.btn-mag.btn-role {
+  padding: 11px 22px;
+  background: var(--btn-bg, var(--seal));
+  border-color: var(--btn-bg, var(--seal));
+  box-shadow: 0 6px 16px -6px var(--btn-bg, var(--seal));
+  color: white;
+}
+.btn-mag.btn-role:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px -8px var(--btn-bg, var(--seal));
+}
+.btn-mag.btn-role:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.role-link {
+  font-family: var(--ff-sub);
+}
+
+/* —— 过渡动画：expand（表单展开收起）—— */
+.expand-enter-active,
+.expand-leave-active {
+  transition: all 0.28s ease;
+  overflow: hidden;
+  max-height: 480px;
+  opacity: 1;
+  transform: translateY(0);
+}
+.expand-enter-from,
+.expand-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.expand-move { transition: transform 0.28s ease; }
+
+/* —— 右栏布局：去掉旧的 login-card 样式（已废弃）—— */
+.hero-right .login-card { display: none; }
+.login-card { display: none; }
+.head, .card-title, .tag, .role-tabs { display: none; }
+
+/* ══════════════════════════════════════
+   · 原样式的 Form / ToggleRow / LoginFoot（保留，供 roll-card 内复用）
+   ══════════════════════════════════════ */
 .field { margin-top: 12px; }
 .field label {
   display: block;
@@ -813,24 +1090,15 @@ onMounted(() => {
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
 
-/* Card mag (replicated) */
+/* Card mag (replicated, 纯色化：移除渐变顶条) */
 .card-mag {
-  background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.78));
+  background: #FFFFFF;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: 22px;
   box-shadow: var(--shadow-2);
-  backdrop-filter: blur(6px);
   position: relative;
   overflow: hidden;
-}
-.card-mag::after {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--seal), transparent 60%);
-  opacity: .7;
 }
 
 /* ── Features section ── */
@@ -894,16 +1162,11 @@ onMounted(() => {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: none; }
 }
-@keyframes sealPop {
-  0%   { opacity: 0; transform: rotate(-6deg) scale(0.8); }
-  60%  { opacity: 1; transform: rotate(-6deg) scale(1.04); }
-  100% { opacity: 1; transform: rotate(-6deg) scale(1); }
-}
 
 /* ── Responsive ── */
 @media (max-width: 980px) {
   .hero-sec { grid-template-columns: 1fr; gap: 24px; padding: 30px 20px; }
-  .seal-big { margin: 20px auto 0; }
+  .hero-right { padding-top: 0; }
   .feat-sec { padding: 20px 20px 40px; }
   .nav-mag { display: none; }
 }

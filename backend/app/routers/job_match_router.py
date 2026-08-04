@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 
 from app.models.database import get_db
-from app.models.tables import User, Submission, Evaluation, Task
+from app.models.tables import LoginAccount, Teacher, Student, Submission, Evaluation, Task
 from app.models.class_models import Class, ClassMember as CM2, ClassMember
 from app.models.enterprise_models import EnterpriseMentor, JobPosition, Enterprise
 from app.services.job_matcher import (
@@ -21,6 +21,76 @@ from app.services.job_matcher import (
 from app.utils.auth import decode_token
 
 router = APIRouter(prefix="/api/job-match", tags=["岗位匹配"])
+
+
+# ============================================================
+# ID 转换辅助函数
+# ============================================================
+
+def _account_to_student_id(db: Session, account_id: int) -> Optional[int]:
+    """login_accounts.id → students.id"""
+    if not account_id:
+        return None
+    row = db.query(Student).filter(Student.account_id == int(account_id)).first()
+    return row.id if row else None
+
+
+def _account_to_teacher_id(db: Session, account_id: int) -> Optional[int]:
+    """login_accounts.id → teachers.id"""
+    if not account_id:
+        return None
+    row = db.query(Teacher).filter(Teacher.account_id == int(account_id)).first()
+    return row.id if row else None
+
+
+def _student_pk_to_account_id(db: Session, student_pk: int) -> Optional[int]:
+    """students.id → login_accounts.id"""
+    if not student_pk:
+        return None
+    row = db.query(Student).filter(Student.id == int(student_pk)).first()
+    return row.account_id if row else None
+
+
+def _teacher_pk_to_account_id(db: Session, teacher_pk: int) -> Optional[int]:
+    """teachers.id → login_accounts.id"""
+    if not teacher_pk:
+        return None
+    row = db.query(Teacher).filter(Teacher.id == int(teacher_pk)).first()
+    return row.account_id if row else None
+
+
+def _batch_account_to_student_ids(db: Session, account_ids: List[int]) -> dict:
+    """批量：login_accounts.id → students.id。返回 {account_id: student_pk}"""
+    if not account_ids:
+        return {}
+    rows = db.query(Student).filter(Student.account_id.in_(list(set(int(x) for x in account_ids if x)))).all()
+    return {r.account_id: r.id for r in rows}
+
+
+def _batch_student_pk_to_account_ids(db: Session, student_pks: List[int]) -> dict:
+    """批量：students.id → login_accounts.id。返回 {student_pk: account_id}"""
+    if not student_pks:
+        return {}
+    rows = db.query(Student).filter(Student.id.in_(list(set(int(x) for x in student_pks if x)))).all()
+    return {r.id: r.account_id for r in rows}
+
+
+def _role_is_teacher(user: LoginAccount, token_role: Optional[str] = None) -> bool:
+    if user and user.role == "teacher":
+        return True
+    return token_role == "teacher"
+
+
+def _role_is_student(user: LoginAccount, token_role: Optional[str] = None) -> bool:
+    if user and user.role == "student":
+        return True
+    return token_role == "student"
+
+
+def _role_is_enterprise(user: LoginAccount, token_role: Optional[str] = None) -> bool:
+    if user and user.role == "mentor":
+        return True
+    return token_role == "enterprise"
 
 
 # ============================================================
@@ -43,36 +113,57 @@ def _extract_token(
 def get_current_user(
     token: Optional[str] = Depends(_extract_token),
     db: Session = Depends(get_db),
-) -> User:
+) -> LoginAccount:
     if not token:
         raise HTTPException(401, "缺少 Token")
     payload = decode_token(token)
     if not payload or not payload.get("user_id"):
         raise HTTPException(401, "Token 无效或已过期")
-    user = db.query(User).filter(User.id == int(payload["user_id"])).first()
+    user = db.query(LoginAccount).filter(LoginAccount.id == int(payload["user_id"])).first()
     if not user:
         raise HTTPException(401, "用户不存在")
     return user
 
 
-def require_login(user: User = Depends(get_current_user)) -> User:
+def _get_token_role_raw(token: Optional[str]) -> Optional[str]:
+    if not token:
+        return None
+    payload = decode_token(token)
+    if not payload:
+        return None
+    return payload.get("role")
+
+
+def require_login(user: LoginAccount = Depends(get_current_user)) -> LoginAccount:
     return user
 
 
-def require_teacher(user: User = Depends(get_current_user)) -> User:
-    if user.role != "teacher":
+def require_teacher(
+    user: LoginAccount = Depends(get_current_user),
+    token: Optional[str] = Depends(_extract_token),
+) -> LoginAccount:
+    token_role = _get_token_role_raw(token)
+    if not _role_is_teacher(user, token_role):
         raise HTTPException(403, "仅教师可访问")
     return user
 
 
-def require_student(user: User = Depends(get_current_user)) -> User:
-    if user.role != "student":
+def require_student(
+    user: LoginAccount = Depends(get_current_user),
+    token: Optional[str] = Depends(_extract_token),
+) -> LoginAccount:
+    token_role = _get_token_role_raw(token)
+    if not _role_is_student(user, token_role):
         raise HTTPException(403, "仅学生可访问")
     return user
 
 
-def require_enterprise(user: User = Depends(get_current_user)) -> User:
-    if user.role != "enterprise":
+def require_enterprise(
+    user: LoginAccount = Depends(get_current_user),
+    token: Optional[str] = Depends(_extract_token),
+) -> LoginAccount:
+    token_role = _get_token_role_raw(token)
+    if not _role_is_enterprise(user, token_role):
         raise HTTPException(403, "仅企业导师可访问")
     return user
 
@@ -81,24 +172,50 @@ def require_enterprise(user: User = Depends(get_current_user)) -> User:
 # 共享工具：查某个学生的所有评价 + 班级成员校验 + 企业可见班级
 # ============================================================
 
-def _get_mentor_enterprise_id(db: Session, user: User) -> Optional[int]:
-    if user.role != "enterprise":
-        return None
-    row = db.query(EnterpriseMentor).filter(EnterpriseMentor.user_id == user.id).first()
+def _get_mentor_enterprise_id(db: Session, user: LoginAccount) -> Optional[int]:
+    # user.role 用 mentor；兼容 token role 未映射的情况也查 EnterpriseMentor(account_id=user.id)
+    row = db.query(EnterpriseMentor).filter(EnterpriseMentor.account_id == user.id).first()
     return row.enterprise_id if row else None
 
 
 def _class_ids_for_enterprise(db: Session, enterprise_id: Optional[int]) -> List[int]:
-    if not enterprise_id:
-        return []
-    rows = db.query(Class.id).filter(Class.enterprise_id == enterprise_id).all()
-    return [r[0] for r in rows]
+    """企业可见班级：和 enterprise_router._enterprise_visible_class_ids 保持一致。
+
+    1. 直接绑定 enterprise_id 的班级 + 岗位 linked_classes 绑定的班级（去重）
+    2. 若 1) 为空（没绑定任何班级），按产品需求回退为**全部活跃班级**，
+       保证企业端岗位匹配页 / 评价页永远有数据入口。"""
+    direct_ids = set()
+    from_job = set()
+    if enterprise_id:
+        direct = (
+            db.query(Class.id)
+            .filter(Class.enterprise_id == enterprise_id)
+            .filter(Class.status == "active")
+            .all()
+        )
+        direct_ids = {r[0] for r in direct}
+        jobs = (
+            db.query(JobPosition.linked_classes)
+            .filter(JobPosition.enterprise_id == enterprise_id)
+            .all()
+        )
+        for (linked,) in jobs:
+            if not linked:
+                continue
+            for sid in linked.split(","):
+                if sid.isdigit():
+                    from_job.add(int(sid))
+    visible = direct_ids | from_job
+    if visible:
+        return list(visible)
+    all_active = db.query(Class.id).filter(Class.status == "active").all()
+    return [c[0] for c in all_active]
 
 
-def _student_ids_in_class_ids(db: Session, class_ids: List[int]) -> List[int]:
+def _student_pks_in_class_ids(db: Session, class_ids: List[int]) -> List[int]:
+    """返回 class_ids 班级内的 students.id 列表（PK）。"""
     if not class_ids:
         return []
-    # 兼容 class_class_members & class_members 两张可能的历史表
     ids = set()
     try:
         q1 = db.query(CM2.student_id).filter(CM2.class_id.in_(class_ids)).all()
@@ -116,18 +233,27 @@ def _student_ids_in_class_ids(db: Session, class_ids: List[int]) -> List[int]:
     return list(ids)
 
 
-def _load_student_evaluations(db: Session, student_ids: List[int]):
-    """批量加载学生评价（Evaluation：ai/teacher）。返回 {student_id: [ev, ev]}"""
-    if not student_ids:
+def _student_account_ids_in_class_ids(db: Session, class_ids: List[int]) -> List[int]:
+    """返回 class_ids 班级内的 login_accounts.id 列表（对外兼容）。"""
+    pks = _student_pks_in_class_ids(db, class_ids)
+    if not pks:
+        return []
+    pk_map = _batch_student_pk_to_account_ids(db, pks)
+    return [pk_map[pk] for pk in pks if pk in pk_map]
+
+
+def _load_student_evaluations_by_pk(db: Session, student_pks: List[int]):
+    """批量加载学生评价（students.id PK 列表）。返回 {student_pk: [ev, ev]}"""
+    if not student_pks:
         return {}
     evs = (
         db.query(Evaluation, Submission.student_id)
         .join(Submission, Evaluation.submission_id == Submission.id)
-        .filter(Submission.student_id.in_(student_ids))
+        .filter(Submission.student_id.in_(student_pks))
         .filter(Evaluation.evaluator_type.in_(["ai", "teacher"]))
         .all()
     )
-    out: dict = {sid: [] for sid in student_ids}
+    out: dict = {sid: [] for sid in student_pks}
     for ev, sid in evs:
         row = {
             "submission_id": ev.submission_id,
@@ -141,44 +267,70 @@ def _load_student_evaluations(db: Session, student_ids: List[int]):
     return out
 
 
-def _load_student_basics(db: Session, student_ids: List[int]) -> dict:
-    if not student_ids:
+def _load_student_basics_by_account(db: Session, account_ids: List[int]) -> dict:
+    """批量加载学生基础信息（按 login_accounts.id）。返回 {account_id: {id,real_name,...}}"""
+    if not account_ids:
         return {}
-    users = db.query(User).filter(User.id.in_(student_ids)).all()
-    # 查学生的班级（可能多个，取第一个班级名做展示）
+    clean_ids = [int(x) for x in account_ids if x]
+    if not clean_ids:
+        return {}
+    accounts = db.query(LoginAccount).filter(LoginAccount.id.in_(clean_ids)).all()
+    students = db.query(Student).filter(Student.account_id.in_(clean_ids)).all()
+    stu_by_acc = {s.account_id: s for s in students}
+
+    account_set = set(clean_ids)
     memberships: dict = {}
     try:
         from app.models.tables import ClassMember as TCM
-        q = (
-            db.query(TCM.student_id, Class.name)
-            .join(Class, Class.id == TCM.class_id)
-            .filter(TCM.student_id.in_(student_ids))
-            .all()
-        )
-        for sid, cname in q:
-            memberships.setdefault(sid, cname)
+        stu_pks = [stu.id for stu in students if stu.account_id in account_set]
+        if stu_pks:
+            q = (
+                db.query(TCM.student_id, Class.name)
+                .join(Class, Class.id == TCM.class_id)
+                .filter(TCM.student_id.in_(stu_pks))
+                .all()
+            )
+            pk_to_acc = {s.id: s.account_id for s in students}
+            for spk, cname in q:
+                aid = pk_to_acc.get(spk)
+                if aid is not None and aid not in memberships:
+                    memberships[aid] = cname
     except Exception:
         pass
     try:
-        q2 = (
-            db.query(CM2.student_id, Class.name)
-            .join(Class, Class.id == CM2.class_id)
-            .filter(CM2.student_id.in_(student_ids))
-            .all()
-        )
-        for sid, cname in q2:
-            memberships.setdefault(sid, cname)
+        stu_pks = [stu.id for stu in students if stu.account_id in account_set]
+        if stu_pks:
+            q2 = (
+                db.query(CM2.student_id, Class.name)
+                .join(Class, Class.id == CM2.class_id)
+                .filter(CM2.student_id.in_(stu_pks))
+                .all()
+            )
+            pk_to_acc = {s.id: s.account_id for s in students}
+            for spk, cname in q2:
+                aid = pk_to_acc.get(spk)
+                if aid is not None and aid not in memberships:
+                    memberships[aid] = cname
     except Exception:
         pass
+
     out = {}
-    for u in users:
+    for u in accounts:
+        s = stu_by_acc.get(u.id)
+        real_name_val = ""
+        user_number_val = ""
+        if s:
+            real_name_val = s.real_name or u.username or ""
+            user_number_val = s.student_no or ""
+        else:
+            real_name_val = u.username or ""
         out[u.id] = {
             "id": u.id,
-            "real_name": u.real_name or u.username,
-            "username": u.username,
-            "user_number": getattr(u, "user_number", ""),
-            "email": getattr(u, "email", ""),
-            "avatar": getattr(u, "avatar", ""),
+            "real_name": real_name_val,
+            "username": u.username or "",
+            "user_number": user_number_val,
+            "email": u.email or "",
+            "avatar": u.avatar or "",
             "class_name": memberships.get(u.id, ""),
         }
     return out
@@ -202,48 +354,51 @@ def match_one_detail(
     last_n: int = Query(5, ge=1, le=50),
     decay: float = Query(0.8, ge=0.1, le=1.0),
     db: Session = Depends(get_db),
-    me: User = Depends(require_login),
+    me: LoginAccount = Depends(require_login),
+    token: Optional[str] = Depends(_extract_token),
 ):
     """
     单学生 × 单岗位 匹配详情。
     - 学生角色：只能查自己的 student_id
     - 教师/企业：可以查自己可见范围内的学生
     """
-    # 权限
-    if me.role == "student" and int(student_id) != int(me.id):
-        raise HTTPException(403, "学生角色只能查看自己的匹配结果")
+    token_role = _get_token_role_raw(token)
 
-    student = db.query(User).filter(User.id == student_id, User.role == "student").first()
-    if not student:
+    student_account_id = int(student_id)
+    student_pk = _account_to_student_id(db, student_account_id)
+    if not student_pk:
+        raise HTTPException(404, "学生不存在")
+    student_acc = db.query(LoginAccount).filter(LoginAccount.id == student_account_id).first()
+    if not student_acc or not _role_is_student(student_acc, None):
         raise HTTPException(404, "学生不存在")
 
-    if me.role == "teacher":
-        # 只要该学生在该老师任一班级下即可（简化：暂不做严格过滤）
-        pass
-    if me.role == "enterprise":
+    # 权限
+    if _role_is_student(me, token_role) and student_account_id != int(me.id):
+        raise HTTPException(403, "学生角色只能查看自己的匹配结果")
+
+    if _role_is_enterprise(me, token_role):
         eid = _get_mentor_enterprise_id(db, me)
-        visible_students = _student_ids_in_class_ids(db, _class_ids_for_enterprise(db, eid))
-        if visible_students and student_id not in visible_students:
+        visible_account_ids = _student_account_ids_in_class_ids(db, _class_ids_for_enterprise(db, eid))
+        if visible_account_ids and student_account_id not in visible_account_ids:
             raise HTTPException(403, "无权查看该学生")
 
     job = db.query(JobPosition).filter(JobPosition.id == job_id).first()
     if not job:
         raise HTTPException(404, "岗位不存在")
-    if me.role == "enterprise":
+    if _role_is_enterprise(me, token_role):
         eid = _get_mentor_enterprise_id(db, me)
         if eid and int(job.enterprise_id) != int(eid):
             raise HTTPException(403, "只能查看本企业的岗位")
 
-    ev_map = _load_student_evaluations(db, [student_id])
-    dim_scores = get_student_weighted_avg(ev_map.get(student_id, []), last_n=last_n, decay=decay)
+    ev_map = _load_student_evaluations_by_pk(db, [student_pk])
+    dim_scores = get_student_weighted_avg(ev_map.get(student_pk, []), last_n=last_n, decay=decay)
     result = calculate_job_match(dim_scores, job.skill_requirements or [])
 
-    # 附上学生/岗位基础信息，前端少调一次接口
-    basics = _load_student_basics(db, [student_id]).get(student_id, {})
+    basics = _load_student_basics_by_account(db, [student_account_id]).get(student_account_id, {})
     enterprise = db.query(Enterprise).filter(Enterprise.id == job.enterprise_id).first()
     return {
         "success": True,
-        "student": {"id": student_id, **basics},
+        "student": {"id": student_account_id, **basics},
         "job": {
             "id": job.id,
             "title": job.title,
@@ -274,30 +429,36 @@ def student_match_top_jobs(
     last_n: int = Query(5, ge=1, le=50),
     decay: float = Query(0.8, ge=0.1, le=1.0),
     db: Session = Depends(get_db),
-    me: User = Depends(require_login),
+    me: LoginAccount = Depends(require_login),
+    token: Optional[str] = Depends(_extract_token),
 ):
     """学生 TOP N 岗位匹配榜（前端 C3：EStudentProfile 的 TOP5 岗位榜）"""
-    if me.role == "student" and int(student_id) != int(me.id):
-        raise HTTPException(403, "学生角色只能查看自己的岗位榜")
+    token_role = _get_token_role_raw(token)
 
-    student = db.query(User).filter(User.id == student_id, User.role == "student").first()
-    if not student:
+    student_account_id = int(student_id)
+    student_pk = _account_to_student_id(db, student_account_id)
+    if not student_pk:
+        raise HTTPException(404, "学生不存在")
+    student_acc = db.query(LoginAccount).filter(LoginAccount.id == student_account_id).first()
+    if not student_acc or not _role_is_student(student_acc, None):
         raise HTTPException(404, "学生不存在")
 
-    # 加载岗位
+    if _role_is_student(me, token_role) and student_account_id != int(me.id):
+        raise HTTPException(403, "学生角色只能查看自己的岗位榜")
+
     q = db.query(JobPosition).filter(JobPosition.status == "open")
     if job_id:
         q = q.filter(JobPosition.id == job_id)
     if enterprise_id:
         q = q.filter(JobPosition.enterprise_id == enterprise_id)
-    if me.role == "enterprise":
+    if _role_is_enterprise(me, token_role):
         eid = _get_mentor_enterprise_id(db, me)
         if eid:
-            q = q.filter(JobPosition.enterprise_id == eid)  # 企业只能看自己的岗位
+            q = q.filter(JobPosition.enterprise_id == eid)
     jobs = q.all()
 
-    ev_map = _load_student_evaluations(db, [student_id])
-    dim_scores = get_student_weighted_avg(ev_map.get(student_id, []), last_n=last_n, decay=decay)
+    ev_map = _load_student_evaluations_by_pk(db, [student_pk])
+    dim_scores = get_student_weighted_avg(ev_map.get(student_pk, []), last_n=last_n, decay=decay)
 
     def _job_to_payload(j):
         ent = db.query(Enterprise).filter(Enterprise.id == j.enterprise_id).first()
@@ -319,10 +480,10 @@ def student_match_top_jobs(
         top_n=top_n,
     )
 
-    basics = _load_student_basics(db, [student_id]).get(student_id, {})
+    basics = _load_student_basics_by_account(db, [student_account_id]).get(student_account_id, {})
     return {
         "success": True,
-        "student": {"id": student_id, **basics, "dimension_avg": dim_scores},
+        "student": {"id": student_account_id, **basics, "dimension_avg": dim_scores},
         "total": len(list_result),
         "top_n": top_n,
         "list": list_result,
@@ -342,10 +503,12 @@ def batch_class_match(
     last_n: int = Query(5, ge=1, le=50),
     decay: float = Query(0.8, ge=0.1, le=1.0),
     db: Session = Depends(get_db),
-    me: User = Depends(require_login),
+    me: LoginAccount = Depends(require_login),
+    token: Optional[str] = Depends(_extract_token),
 ):
     """岗位匹配 TOP 榜（前端 C3 EJobMatch 左栏 + 直方图数据源）"""
-    # 班级 / 岗位 存在性
+    token_role = _get_token_role_raw(token)
+
     cls = db.query(Class).filter(Class.id == class_id).first()
     if not cls:
         raise HTTPException(404, "班级不存在")
@@ -353,27 +516,45 @@ def batch_class_match(
     if not job:
         raise HTTPException(404, "岗位不存在")
 
-    # 权限
-    if me.role == "enterprise":
+    if _role_is_enterprise(me, token_role):
         eid = _get_mentor_enterprise_id(db, me)
         visible_class_ids = _class_ids_for_enterprise(db, eid)
         if int(class_id) not in visible_class_ids:
             raise HTTPException(403, "该企业无权查看此班级")
-        if eid and int(job.enterprise_id) != int(eid):
-            raise HTTPException(403, "只能匹配本企业的岗位")
+        if eid is not None:
+            has_own_job = (
+                db.query(JobPosition.id)
+                .filter(JobPosition.enterprise_id == eid)
+                .first()
+                is not None
+            )
+            if has_own_job and int(job.enterprise_id) != int(eid):
+                raise HTTPException(403, "只能匹配本企业的岗位")
 
-    student_ids = _student_ids_in_class_ids(db, [class_id])
-    if not student_ids:
+    student_pks = _student_pks_in_class_ids(db, [class_id])
+    if not student_pks:
         return {"success": True, "total": 0, "top_n": top_n,
                 "class": {"id": class_id, "name": cls.name},
                 "job": {"id": job.id, "title": job.title}, "list": []}
 
-    ev_map = _load_student_evaluations(db, student_ids)
-    dim_avg: dict = {
-        sid: get_student_weighted_avg(ev_map.get(sid, []), last_n=last_n, decay=decay)
-        for sid in student_ids
-    }
-    basics = _load_student_basics(db, student_ids)
+    pk_to_acc = _batch_student_pk_to_account_ids(db, student_pks)
+    account_ids = [pk_to_acc[pk] for pk in student_pks if pk in pk_to_acc]
+
+    ev_map_pk = _load_student_evaluations_by_pk(db, student_pks)
+    ev_map_acc: dict = {}
+    for pk, evs in ev_map_pk.items():
+        aid = pk_to_acc.get(pk)
+        if aid is not None:
+            ev_map_acc[aid] = evs
+
+    dim_avg: dict = {}
+    for pk in student_pks:
+        aid = pk_to_acc.get(pk)
+        if aid is None:
+            continue
+        dim_avg[aid] = get_student_weighted_avg(ev_map_acc.get(aid, []), last_n=last_n, decay=decay)
+
+    basics = _load_student_basics_by_account(db, account_ids)
     matched = batch_match_class(
         students_scores=dim_avg,
         student_basics=basics,
@@ -447,27 +628,44 @@ def generate_match_report(
     min_score: float = Query(40.0, ge=0.0, le=100.0),
     fmt: str = Query("text", description="text / json"),
     db: Session = Depends(get_db),
-    me: User = Depends(require_login),
+    me: LoginAccount = Depends(require_login),
+    token: Optional[str] = Depends(_extract_token),
 ):
     """生成班级×岗位的文字版匹配报告（企业端"下载报告"按钮用）"""
+    token_role = _get_token_role_raw(token)
+
     cls = db.query(Class).filter(Class.id == class_id).first()
     if not cls:
         raise HTTPException(404, "班级不存在")
     job = db.query(JobPosition).filter(JobPosition.id == job_id).first()
     if not job:
         raise HTTPException(404, "岗位不存在")
-    if me.role == "enterprise":
+    if _role_is_enterprise(me, token_role):
         eid = _get_mentor_enterprise_id(db, me)
-        if eid and int(job.enterprise_id) != int(eid):
-            raise HTTPException(403, "只能下载本企业岗位的报告")
+        visible_class_ids = _class_ids_for_enterprise(db, eid)
+        if int(class_id) not in visible_class_ids:
+            raise HTTPException(403, "该企业无权查看此班级")
+        if eid is not None:
+            has_own_job = (
+                db.query(JobPosition.id)
+                .filter(JobPosition.enterprise_id == eid)
+                .first()
+                is not None
+            )
+            if has_own_job and int(job.enterprise_id) != int(eid):
+                raise HTTPException(403, "只能下载本企业岗位的报告")
 
-    # 复用 batch_class_match 内部逻辑，避免重复
-    student_ids = _student_ids_in_class_ids(db, [class_id])
-    basics = _load_student_basics(db, student_ids)
-    ev_map = _load_student_evaluations(db, student_ids)
+    student_pks = _student_pks_in_class_ids(db, [class_id])
+    pk_to_acc = _batch_student_pk_to_account_ids(db, student_pks)
+    account_ids = [pk_to_acc[pk] for pk in student_pks if pk in pk_to_acc]
+
+    basics = _load_student_basics_by_account(db, account_ids)
+    ev_map_pk = _load_student_evaluations_by_pk(db, student_pks)
+    ev_map_acc = {pk_to_acc[pk]: evs for pk, evs in ev_map_pk.items() if pk in pk_to_acc}
+
     dim_avg = {
-        sid: get_student_weighted_avg(ev_map.get(sid, []))
-        for sid in student_ids
+        aid: get_student_weighted_avg(ev_map_acc.get(aid, []))
+        for aid in account_ids
     }
     rows = batch_match_class(
         students_scores=dim_avg,

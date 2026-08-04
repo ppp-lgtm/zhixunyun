@@ -2,9 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.database import SessionLocal
-from app.models.tables import Submission, Evaluation, User, EvaluationCriteria, Task
+from app.models.tables import Submission, Evaluation, LoginAccount, Teacher, Student, EvaluationCriteria, Task
 from app.models.class_models import Class, ClassMember
-from app.models.class_models import Class
 
 router = APIRouter(prefix="/api/statistics", tags=["数据统计"])
 
@@ -15,6 +14,58 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# ============================================================
+# ID 转换辅助函数
+# ============================================================
+
+def _account_to_student_id(db: Session, account_id: int):
+    if not account_id:
+        return None
+    row = db.query(Student).filter(Student.account_id == int(account_id)).first()
+    return row.id if row else None
+
+
+def _account_to_teacher_id(db: Session, account_id: int):
+    if not account_id:
+        return None
+    row = db.query(Teacher).filter(Teacher.account_id == int(account_id)).first()
+    return row.id if row else None
+
+
+def _student_pk_to_account_id(db: Session, student_pk: int):
+    if not student_pk:
+        return None
+    row = db.query(Student).filter(Student.id == int(student_pk)).first()
+    return row.account_id if row else None
+
+
+def _teacher_pk_to_account_id(db: Session, teacher_pk: int):
+    if not teacher_pk:
+        return None
+    row = db.query(Teacher).filter(Teacher.id == int(teacher_pk)).first()
+    return row.account_id if row else None
+
+
+def _batch_student_pk_to_account(db: Session, student_pks):
+    if not student_pks:
+        return {}
+    clean = [int(x) for x in student_pks if x]
+    if not clean:
+        return {}
+    rows = db.query(Student).filter(Student.id.in_(clean)).all()
+    return {r.id: r.account_id for r in rows}
+
+
+def _batch_account_to_student_pk(db: Session, account_ids):
+    if not account_ids:
+        return {}
+    clean = [int(x) for x in account_ids if x]
+    if not clean:
+        return {}
+    rows = db.query(Student).filter(Student.account_id.in_(clean)).all()
+    return {r.account_id: r.id for r in rows}
 
 
 # 辅助函数：根据课程名获取所有关联的 submission ids
@@ -37,7 +88,6 @@ def get_overview(class_id: int = 0, course: str = "", db: Session = Depends(get_
         sub_query = db.query(Submission.id).filter(Submission.class_id.like(f"%{class_id}%"))
         if course_sub_ids is not None:
             sub_query = sub_query.filter(Submission.id.in_(course_sub_ids) if course_sub_ids else Submission.id == -1)
-        sub_query = sub_query.subquery()
         total_submissions = db.query(func.count(Submission.id)).filter(
             Submission.class_id.like(f"%{class_id}%")
         )
@@ -60,15 +110,17 @@ def get_overview(class_id: int = 0, course: str = "", db: Session = Depends(get_
             Evaluation.evaluator_type == "ai",
             Evaluation.submission_id.in_(sub_query)
         ).scalar() or 0
-        student_count = len(db.query(Submission.student_id).filter(
+        # class_id 下的学生数：按 submissions 去重 student_id (students.pk)
+        distinct_stu_pks = db.query(Submission.student_id).filter(
             Submission.class_id.like(f"%{class_id}%")
-        ).distinct().all())
+        ).distinct().all()
+        student_count = len([x[0] for x in distinct_stu_pks if x[0]])
         teacher_count = 0
     else:
         base_query = db.query(Submission.id)
         if course_sub_ids is not None:
             base_query = base_query.filter(Submission.id.in_(course_sub_ids) if course_sub_ids else Submission.id == -1)
-        sub_query = base_query.subquery()
+        sub_query = base_query
         total_submissions = db.query(func.count(Submission.id))
         if course_sub_ids is not None:
             total_submissions = total_submissions.filter(Submission.id.in_(course_sub_ids) if course_sub_ids else Submission.id == -1)
@@ -89,8 +141,9 @@ def get_overview(class_id: int = 0, course: str = "", db: Session = Depends(get_
             Evaluation.evaluator_type == "ai",
             Evaluation.submission_id.in_(sub_query)
         ).scalar() or 0
-        student_count = db.query(func.count(User.id)).filter(User.role == "student").scalar() or 0
-        teacher_count = db.query(func.count(User.id)).filter(User.role == "teacher").scalar() or 0
+        # 全局统计：直接查 Student / Teacher 表，无需 role filter
+        student_count = db.query(func.count(Student.id)).scalar() or 0
+        teacher_count = db.query(func.count(Teacher.id)).scalar() or 0
 
     return {
         "success": True,
@@ -218,11 +271,24 @@ def get_dimension_avg(class_id: int = 0, course: str = "", db: Session = Depends
 
 @router.get("/student/{student_id}")
 def get_student_scores(student_id: int, page: int = 1, page_size: int = 5, db: Session = Depends(get_db)):
+    # 入参 student_id 是 login_accounts.id → 转 students.pk
+    student_pk = _account_to_student_id(db, student_id)
+    if not student_pk:
+        return {
+            "success": True,
+            "data": {
+                "records": [],
+                "weakness": [],
+                "total_count": 0,
+                "avg_score": 0
+            }
+        }
+
     # 先查总数
     total_query = db.query(func.count(Submission.id)).join(
         Evaluation, Evaluation.submission_id == Submission.id
     ).filter(
-        Submission.student_id == student_id,
+        Submission.student_id == student_pk,
         Evaluation.evaluator_type == "ai"
     )
     total_count = total_query.scalar() or 0
@@ -233,7 +299,7 @@ def get_student_scores(student_id: int, page: int = 1, page_size: int = 5, db: S
         Evaluation.total_score, Evaluation.dimension_scores, Evaluation.comment,
         Evaluation.step_completeness, Evaluation.logic_issues
     ).join(Evaluation, Evaluation.submission_id == Submission.id).filter(
-        Submission.student_id == student_id,
+        Submission.student_id == student_pk,
         Evaluation.evaluator_type == "ai"
     ).order_by(Submission.created_at.desc()).offset(
         (page - 1) * page_size
@@ -253,7 +319,7 @@ def get_student_scores(student_id: int, page: int = 1, page_size: int = 5, db: S
     all_scores = db.query(Evaluation.dimension_scores).join(
         Submission, Evaluation.submission_id == Submission.id
     ).filter(
-        Submission.student_id == student_id,
+        Submission.student_id == student_pk,
         Evaluation.evaluator_type == "ai"
     ).all()
 
@@ -286,7 +352,7 @@ def get_student_scores(student_id: int, page: int = 1, page_size: int = 5, db: S
     all_avg = db.query(func.avg(Evaluation.total_score)).join(
         Submission, Evaluation.submission_id == Submission.id
     ).filter(
-        Submission.student_id == student_id,
+        Submission.student_id == student_pk,
         Evaluation.evaluator_type == "ai"
     ).scalar() or 0
 
@@ -300,13 +366,18 @@ def get_student_scores(student_id: int, page: int = 1, page_size: int = 5, db: S
         }
     }
 
+
 @router.get("/student/{student_id}/teacher-scores")
 def get_student_teacher_scores(student_id: int, db: Session = Depends(get_db)):
+    student_pk = _account_to_student_id(db, student_id)
+    if not student_pk:
+        return {"success": True, "data": []}
+
     results = db.query(
         Submission.id, Submission.filename, Submission.created_at,
         Evaluation.total_score, Evaluation.dimension_scores, Evaluation.comment
     ).join(Evaluation, Evaluation.submission_id == Submission.id).filter(
-        Submission.student_id == student_id,
+        Submission.student_id == student_pk,
         Evaluation.evaluator_type == "teacher"
     ).order_by(Submission.created_at.desc()).all()
 
@@ -327,10 +398,24 @@ def get_student_teacher_scores(student_id: int, db: Session = Depends(get_db)):
 def get_class_stats(class_id: int, db: Session = Depends(get_db)):
     members = db.query(ClassMember).filter(ClassMember.class_id == class_id).all()
 
+    all_member_pks = [m.student_id for m in members if m.student_id]
+    pk_to_acc = _batch_student_pk_to_account(db, all_member_pks)
+
+    # 预加载：student_pk → (student_name, student_number) 从 Student 表取，避免依赖 CM2 冗余字段
+    stu_rows = db.query(Student).filter(Student.id.in_(all_member_pks)).all() if all_member_pks else []
+    stu_info = {r.id: (r.real_name, r.student_no) for r in stu_rows}
+
     student_scores = []
     for m in members:
+        spk = m.student_id
+        account_id = pk_to_acc.get(spk) if spk else None
+
+        name_from_info = stu_info.get(spk, ("", "")) if spk else ("", "")
+        student_name = m.student_name or name_from_info[0] or ""
+        student_number = m.student_number or name_from_info[1] or ""
+
         submissions = db.query(Submission.id, Submission.filename, Submission.created_at).filter(
-            Submission.student_id == m.student_id
+            Submission.student_id == spk
         ).all()
 
         eval_scores = []
@@ -346,10 +431,12 @@ def get_class_stats(class_id: int, db: Session = Depends(get_db)):
                 "teacher_score": float(teacher_score) if teacher_score else None
             })
 
+        # 返回 student_id 仍用 login_accounts.id（对外契约兼容）
+        out_student_id = account_id if account_id is not None else (spk or 0)
         student_scores.append({
-            "student_id": m.student_id,
-            "student_name": m.student_name,
-            "student_number": m.student_number or "",
+            "student_id": out_student_id,
+            "student_name": student_name,
+            "student_number": student_number or "",
             "submission_count": len(eval_scores),
             "avg_ai_score": round(sum(e["ai_score"] for e in eval_scores if e["ai_score"]) / max(1, len([e for e in eval_scores if e["ai_score"]])), 1) if eval_scores else 0,
             "submissions": eval_scores
@@ -376,23 +463,58 @@ def get_class_stats(class_id: int, db: Session = Depends(get_db)):
 def get_class_ranking(class_id: int, student_id: int = 0, db: Session = Depends(get_db)):
     members = db.query(ClassMember).filter(ClassMember.class_id == class_id).all()
 
+    all_member_pks = [m.student_id for m in members if m.student_id]
+    pk_to_acc = _batch_student_pk_to_account(db, all_member_pks)
+
+    stu_rows = db.query(Student).filter(Student.id.in_(all_member_pks)).all() if all_member_pks else []
+    stu_info = {r.id: r.real_name for r in stu_rows}
+
+    # 传入的 student_id 是 login_accounts.id，需要找到对应 student_pk 用来比对
+    my_student_pk = None
+    if student_id and student_id > 0:
+        my_student_pk = _account_to_student_id(db, student_id)
+
     student_scores = []
     for m in members:
+        spk = m.student_id
+        account_id = pk_to_acc.get(spk) if spk else None
+
         evals = db.query(Evaluation.total_score).join(
             Submission, Evaluation.submission_id == Submission.id
-        ).filter(Submission.student_id == m.student_id, Evaluation.evaluator_type == "ai").all()
+        ).filter(Submission.student_id == spk, Evaluation.evaluator_type == "ai").all()
         scores = [float(e.total_score) for e in evals if e.total_score]
         avg = round(sum(scores) / len(scores), 1) if scores else 0
+
+        student_name = m.student_name or stu_info.get(spk, "") or ""
+        # 返回 student_id 用 login_accounts.id
+        out_student_id = account_id if account_id is not None else (spk or 0)
         student_scores.append({
-            "student_id": m.student_id,
-            "student_name": m.student_name,
+            "student_id": out_student_id,
+            "student_name": student_name,
             "avg_score": avg,
             "submit_count": len(scores)
         })
 
     student_scores.sort(key=lambda x: x["avg_score"], reverse=True)
 
-    my_rank = next((i + 1 for i, s in enumerate(student_scores) if s["student_id"] == student_id), 0)
+    # my_rank 对比也按 student_pk → account_id 转后再比
+    my_account_id_for_compare = None
+    if my_student_pk:
+        my_account_id_for_compare = pk_to_acc.get(my_student_pk)
+
+    my_rank = 0
+    my_avg = 0
+    for i, s in enumerate(student_scores):
+        if my_account_id_for_compare is not None and s["student_id"] == my_account_id_for_compare:
+            my_rank = i + 1
+            my_avg = s["avg_score"]
+            break
+        # 兼容未转换时按原始 student_id 直比（避免老数据）
+        if my_account_id_for_compare is None and student_id and s["student_id"] == student_id:
+            my_rank = i + 1
+            my_avg = s["avg_score"]
+            break
+
     class_avg = round(sum(s["avg_score"] for s in student_scores if s["avg_score"]) / max(1, len([s for s in student_scores if s["avg_score"]])), 1)
 
     return {
@@ -400,7 +522,7 @@ def get_class_ranking(class_id: int, student_id: int = 0, db: Session = Depends(
         "data": {
             "ranking": student_scores[:10],
             "my_rank": my_rank,
-            "my_avg": next((s["avg_score"] for s in student_scores if s["student_id"] == student_id), 0),
+            "my_avg": my_avg,
             "class_avg": class_avg,
             "total_students": len(student_scores)
         }
@@ -409,11 +531,23 @@ def get_class_ranking(class_id: int, student_id: int = 0, db: Session = Depends(
 
 @router.get("/notifications/{student_id}")
 def get_notifications(student_id: int, db: Session = Depends(get_db)):
+    student_pk = _account_to_student_id(db, student_id)
+    if not student_pk:
+        return {
+            "success": True,
+            "data": {
+                "has_notification": False,
+                "evaluated_count": 0,
+                "total_count": 0,
+                "message": ""
+            }
+        }
+
     teacher_evals = db.query(Evaluation.submission_id).join(
         Submission, Evaluation.submission_id == Submission.id
-    ).filter(Submission.student_id == student_id, Evaluation.evaluator_type == "teacher").all()
+    ).filter(Submission.student_id == student_pk, Evaluation.evaluator_type == "teacher").all()
     evaluated_ids = [e.submission_id for e in teacher_evals]
-    all_ids = [s.id for s in db.query(Submission.id).filter(Submission.student_id == student_id).all()]
+    all_ids = [s.id for s in db.query(Submission.id).filter(Submission.student_id == student_pk).all()]
     evaluated_count = len(set(evaluated_ids) & set(all_ids))
 
     return {
@@ -430,10 +564,14 @@ def get_notifications(student_id: int, db: Session = Depends(get_db)):
 @router.get("/job-match/{student_id}")
 def get_job_match(student_id: int, db: Session = Depends(get_db)):
     """AI 岗位匹配推荐"""
+    student_pk = _account_to_student_id(db, student_id)
+    if not student_pk:
+        return {"success": False, "error": "暂无评价数据"}
+
     submissions = db.query(
         Evaluation.dimension_scores, Evaluation.total_score
     ).join(Submission, Evaluation.submission_id == Submission.id).filter(
-        Submission.student_id == student_id,
+        Submission.student_id == student_pk,
         Evaluation.evaluator_type == "ai"
     ).all()
 
@@ -570,11 +708,15 @@ def get_courses(db: Session = Depends(get_db)):
 @router.get("/student/{student_id}/growth")
 def get_student_growth(student_id: int, db: Session = Depends(get_db)):
     """学生能力成长报告"""
+    student_pk = _account_to_student_id(db, student_id)
+    if not student_pk:
+        return {"success": False, "error": "学生不存在或提交次数不足"}
+
     submissions = db.query(
         Evaluation.total_score, Evaluation.dimension_scores, Evaluation.comment,
         Submission.created_at
     ).join(Submission, Evaluation.submission_id == Submission.id).filter(
-        Submission.student_id == student_id,
+        Submission.student_id == student_pk,
         Evaluation.evaluator_type == "ai"
     ).order_by(Submission.created_at.asc()).all()
 
@@ -606,27 +748,30 @@ def get_student_growth(student_id: int, db: Session = Depends(get_db)):
     worst_dim = changes[-1] if changes else None
 
     # AI 生成成长评语
-    dim_text = "、".join([f"{c['name']}首次{c['first_score']}→最新{c['latest_score']}({'+' if c['change']>=0 else ''}{c['change']})" for c in changes])
-    prompt = f"""你是实训学习顾问。根据学生能力成长数据给出鼓励性评语（80字以内）。
+    if best_dim and worst_dim:
+        dim_text = "、".join([f"{c['name']}首次{c['first_score']}→最新{c['latest_score']}({'+' if c['change']>=0 else ''}{c['change']})" for c in changes])
+        prompt = f"""你是实训学习顾问。根据学生能力成长数据给出鼓励性评语（80字以内）。
 
 首次均分：{round(float(first.total_score),1)}，最新均分：{round(float(latest.total_score),1)}，提升{round(float(latest.total_score)-float(first.total_score),1)}分
 各维度变化：{dim_text}
 进步最大：{best_dim['name']}(+{best_dim['change']})，需加强：{worst_dim['name']}({'+' if worst_dim['change']>=0 else ''}{worst_dim['change']})
 请返回JSON：{{"advice":"评语"}}只返回JSON。"""
 
-    try:
-        from app.utils.ai_evaluator import deepseek_client as client
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
-        )
-        result = response.choices[0].message.content
-        if "```" in result: result = result.split("```")[1].split("```")[0]
-        if result.startswith("json"): result = result[4:]
-        import json as j
-        ai_advice = j.loads(result.strip()).get("advice", "继续努力，每次提交都在进步！")
-    except:
+        try:
+            from app.utils.ai_evaluator import deepseek_client as client
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7
+            )
+            result = response.choices[0].message.content
+            if "```" in result: result = result.split("```")[1].split("```")[0]
+            if result.startswith("json"): result = result[4:]
+            import json as j
+            ai_advice = j.loads(result.strip()).get("advice", "继续努力，每次提交都在进步！")
+        except:
+            ai_advice = "继续努力，每次提交都在进步！"
+    else:
         ai_advice = "继续努力，每次提交都在进步！"
 
     return {
@@ -655,12 +800,16 @@ def get_student_growth(student_id: int, db: Session = Depends(get_db)):
 @router.get("/student/{student_id}/summary")
 def get_student_summary(student_id: int, db: Session = Depends(get_db)):
     """获取学生成绩汇总（用于班级成绩总览弹窗）"""
-    student = db.query(User).filter(User.id == student_id).first()
-    if not student:
+    # 原代码：db.query(User).filter(User.id == student_id).first()
+    student_account_id = int(student_id)
+    account = db.query(LoginAccount).filter(LoginAccount.id == student_account_id).first()
+    student_row = db.query(Student).filter(Student.account_id == student_account_id).first()
+    if not account or not student_row:
         return {"success": False, "error": "学生不存在"}
+    student_pk = student_row.id
 
     submissions = db.query(Submission).filter(
-        Submission.student_id == student_id
+        Submission.student_id == student_pk
     ).order_by(Submission.created_at.desc()).all()
 
     records = []
@@ -676,7 +825,6 @@ def get_student_summary(student_id: int, db: Session = Depends(get_db)):
             Evaluation.evaluator_type == "teacher"
         ).first()
 
-        # 只显示第一个文件名
         first_filename = sub.filename.split(',')[0] if sub.filename else ''
 
         records.append({
@@ -698,7 +846,7 @@ def get_student_summary(student_id: int, db: Session = Depends(get_db)):
     dim_counts = {}
     all_evals = db.query(Evaluation.dimension_scores, Evaluation.total_score).join(
         Submission, Evaluation.submission_id == Submission.id
-    ).filter(Submission.student_id == student_id, Evaluation.evaluator_type == "ai").all()
+    ).filter(Submission.student_id == student_pk, Evaluation.evaluator_type == "ai").all()
 
     for scores, total in all_evals:
         if scores:
@@ -733,11 +881,15 @@ def get_student_summary(student_id: int, db: Session = Depends(get_db)):
     except:
         ai_comment = "该生学习态度认真，继续努力！"
 
+    # 返回 student_name / student_number：从 Student 表取
+    student_name_out = student_row.real_name or account.username or ""
+    student_number_out = student_row.student_no or ""
+
     return {
         "success": True,
         "data": {
-            "student_name": student.real_name or student.username,
-            "student_number": student.user_number or "",
+            "student_name": student_name_out,
+            "student_number": student_number_out,
             "records": records,
             "submit_count": len(submissions),
             "ai_avg": avg_ai,
@@ -751,16 +903,18 @@ def get_recent_activities(db: Session = Depends(get_db)):
     activities = []
 
     # 最近5条提交记录
+    # 旧：join(User, Submission.student_id == User.id)
+    # 新：join(Student, Student.id == Submission.student_id)，然后 Student.account_id → LoginAccount
     submissions = db.query(
         Submission.id, Submission.filename, Submission.created_at,
         Submission.student_id, Submission.task_id, Submission.class_id,
-        User.real_name, Task.title
-    ).join(User, Submission.student_id == User.id).join(
-        Task, Submission.task_id == Task.id
+        LoginAccount.real_name, Task.title
+    ).join(Student, Student.id == Submission.student_id
+    ).join(LoginAccount, LoginAccount.id == Student.account_id
+    ).join(Task, Submission.task_id == Task.id
     ).order_by(Submission.created_at.desc()).limit(5).all()
 
     for s in submissions:
-        # 查班级名
         class_name = "未知班级"
         if s.class_id:
             try:
@@ -782,12 +936,14 @@ def get_recent_activities(db: Session = Depends(get_db)):
         })
 
     # 最近3条任务发布记录
+    # 旧：join(User, Task.created_by == User.id)
+    # 新：join(Teacher, Teacher.id == Task.created_by)，然后 Teacher.account_id → LoginAccount
     tasks = db.query(
         Task.id, Task.title, Task.created_at, Task.created_by,
-        User.real_name
-    ).join(User, Task.created_by == User.id).order_by(
-        Task.created_at.desc()
-    ).limit(3).all()
+        LoginAccount.real_name
+    ).join(Teacher, Teacher.id == Task.created_by
+    ).join(LoginAccount, LoginAccount.id == Teacher.account_id
+    ).order_by(Task.created_at.desc()).limit(3).all()
 
     for t in tasks:
         activities.append({

@@ -1,4 +1,6 @@
 import json
+import sys
+from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
@@ -10,29 +12,114 @@ from app.services.step_extractor import (
     _normalize_for_match,
 )
 
-_settings = get_settings()
 
-# DeepSeek 官方 API（文字评价）
-DEEPSEEK_API_KEY = _settings.DEEPSEEK_API_KEY
-DEEPSEEK_BASE_URL = _settings.DEEPSEEK_BASE_URL
+# ═══════════════════════════════════════════════════════════════════════
+# AI 配置：惰性读取，不缓存模块导入时的 Settings 快照。
+#   原因：有两个场景会导致"模块导入时 DEEPSEEK_API_KEY 为空但后续 .env
+#   其实已经填好了"：
+#     1) run.py database_bootstrap() 之前若某处间接 import 了本模块，
+#        当时 .env 还没被 run.py 的 load_dotenv 补上；
+#     2) 用户忘记复制 .env.example → .env 就启动了后端（旧 config.py），
+#        之后才更新 .env.example（且新 config.py 支持 .env.example fallback）。
+# ═══════════════════════════════════════════════════════════════════════
+def _ds_key() -> str:
+    return (get_settings().DEEPSEEK_API_KEY or "").strip()
 
-# 硅基流动 API（图片识别）
-SILICON_API_KEY = _settings.SILICON_API_KEY
-SILICON_BASE_URL = _settings.SILICON_BASE_URL
+def _ds_base() -> str:
+    return (get_settings().DEEPSEEK_BASE_URL or "https://api.deepseek.com").strip()
+
+def _si_key() -> str:
+    return (get_settings().SILICON_API_KEY or "").strip()
+
+def _si_base() -> str:
+    return (get_settings().SILICON_BASE_URL or "https://api.siliconflow.cn/v1").strip()
 
 
-# 延迟初始化：没有 Key 时不实例化，避免启动时报错（本地开发 / CI 自测）
-def _lazy_client(api_key: str, base_url: str):
+# 模块级 __getattr__：任何 `from ai_evaluator import DEEPSEEK_API_KEY` 或
+# `ai_evaluator.DEEPSEEK_API_KEY` 都会调用这里 → 每次实时从 Settings 取最新值。
+_LAZY_ATTRS = {
+    "DEEPSEEK_API_KEY": _ds_key,
+    "DEEPSEEK_BASE_URL": _ds_base,
+    "SILICON_API_KEY": _si_key,
+    "SILICON_BASE_URL": _si_base,
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY_ATTRS:
+        return _LAZY_ATTRS[name]()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# 延迟初始化 + 失效重建：只要 Key/Base 变了就丢掉旧 client。
+_cache: dict = {"ds": (None, None), "si": (None, None)}  # (key_tuple, client_or_None)
+
+
+def _get_client(kind: str):
+    """kind ∈ {"ds","si"}。支持 Key 变化后自动重建 client。"""
+    if kind == "ds":
+        cur = (_ds_key(), _ds_base())
+    else:
+        cur = (_si_key(), _si_base())
+    cached_key, cached_client = _cache[kind]
+    if cached_key == cur and cached_client is not None:
+        return cached_client
+    api_key, base_url = cur
     if not api_key:
+        _cache[kind] = (cur, None)
         return None
     try:
-        return OpenAI(api_key=api_key, base_url=base_url)
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=20.0, max_retries=1)
     except Exception:
-        return None
+        client = None
+    _cache[kind] = (cur, client)
+    return client
 
 
-deepseek_client = _lazy_client(DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL)
-silicon_client = _lazy_client(SILICON_API_KEY, SILICON_BASE_URL)
+# ═══════════════════════════════════════════════════════════════════════
+# 兼容调用者"把 deepseek_client / silicon_client 当普通对象 import"：
+#   task_manage.py: if ... or _ds_client is None: ...
+#                   _ds_client.chat.completions.create(...)
+#   evaluate.py:    if deepseek_client is None: ...
+#                   deepseek_client.chat.completions.create(...)
+#   statistics.py:  client.chat.completions.create(...)
+# 用 proxy wrapper 让它在属性访问时懒加载真实 client。
+# ═══════════════════════════════════════════════════════════════════════
+class _ClientProxy:
+    def __init__(self, kind: str):
+        object.__setattr__(self, "_kind", kind)
+
+    def _resolve(self):
+        return _get_client(object.__getattribute__(self, "_kind"))
+
+    def __getattr__(self, item):
+        client = object.__getattribute__(self, "_resolve")()
+        if client is None:
+            raise AttributeError(
+                f"_ClientProxy({object.__getattribute__(self, '_kind')}).{item}: "
+                f"client is None (AI key not configured)"
+            )
+        return getattr(client, item)
+
+    def __bool__(self):
+        return object.__getattribute__(self, "_resolve")() is not None
+
+    def __eq__(self, other):
+        return other is None and bool(self) is False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __repr__(self):
+        client = object.__getattribute__(self, "_resolve")()
+        return f"_ClientProxy(kind={object.__getattribute__(self, '_kind')!r}, client={'OK' if client else 'None'})"
+
+
+# 把 proxy 注入到本模块（而不是走 __getattr__），避免它们被 import 时无法比较。
+_self = sys.modules[__name__]
+_self.deepseek_client = _ClientProxy("ds")  # type: ignore[attr-defined]
+_self.silicon_client = _ClientProxy("si")   # type: ignore[attr-defined]
+
 
 
 def evaluate(task_requirements, student_content, criteria):
@@ -50,7 +137,8 @@ def evaluate(task_requirements, student_content, criteria):
 每个维度给0-100分和一句话理由，再加总分(加权平均)和总评。
 只返回JSON，格式：{{"scores":[{{"name":"维度名","score":80,"reason":"理由"}}],"total":85,"comment":"总评"}}"""
 
-    if deepseek_client is None:
+    # is None 无法正确识别代理对象，改用 not <proxy> 判断（走 __bool__）
+    if not deepseek_client:
         return {"scores": [], "total": 0, "comment": "AI 未配置，请联系管理员设置 DEEPSEEK_API_KEY。"}
 
     response = deepseek_client.chat.completions.create(
@@ -93,7 +181,8 @@ def evaluate_with_image(task_requirements, criteria, image_data_list=None, text_
 
     user_content.append({"type": "text", "text": content_text})
 
-    if silicon_client is None:
+    # is None 无法正确识别代理对象，改用 not <proxy> 判断（走 __bool__）
+    if not silicon_client:
         return {"scores": [], "total": 0, "comment": "图片识别服务未配置，请联系管理员设置 SILICON_API_KEY。"}
 
     response = silicon_client.chat.completions.create(
@@ -134,7 +223,7 @@ def check_completeness(task_requirements, student_content):
 }}"""
 
     try:
-        if deepseek_client is None:
+        if not deepseek_client:  # is None 无法正确识别代理对象，走 __bool__
             return {"steps": [], "issues": [], "summary": "核查暂时不可用：AI 服务未配置"}
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
@@ -151,13 +240,106 @@ def check_completeness(task_requirements, student_content):
         return {"steps": [], "issues": [], "summary": "核查暂时不可用"}
 
 def is_ai_configured():
-    """检查 AI API Key 是否已配置"""
-    test_values = {"", "sk-your-api-key"}
+    """检查 AI API Key 是否已配置。
+    
+    直接调用 _ds_key() getter 取最新值，而不是依赖 globals() 中的
+    DEEPSEEK_API_KEY 名称绑定（模块内部函数不会走 __getattr__）。
+    """
+    k = _ds_key()
+    test_values = {"", "sk-your-api-key", "sk-xxx", "sk-your-deepseek-key", "sk-your"}
     return bool(
-        DEEPSEEK_API_KEY
-        and DEEPSEEK_API_KEY not in test_values
-        and (not DEEPSEEK_API_KEY.startswith("sk-") or len(DEEPSEEK_API_KEY) >= 16)
+        k
+        and k not in test_values
+        and (not k.startswith("sk-") or len(k) >= 16)
     )
+
+
+def build_ai_misconfig_diagnosis() -> str:
+    """当 is_ai_configured 为 False 时，返回可读的多段诊断文字（不含任何密钥）。
+
+    包含：
+    - 当前生效的 DEEPSEEK_API_KEY 的形态（空/示例占位/前缀正确但太短/已配置）
+    - .env 加载搜索路径报告（哪个存在/哪个读取成功）
+    - 若检测到 .env.example 中已填了真实 Key 但 .env 不存在，则给出明确提示
+    - 一键修复命令（PowerShell）
+    """
+    lines: list[str] = []
+
+    # ① 实际 Key 形态（走 getter，绕过 globals 查找）
+    k = _ds_key() or ""
+    if not k:
+        lines.append("[1/4] 实际生效的 DEEPSEEK_API_KEY：空字符串（未读取到任何值）")
+    elif k == "sk-your-api-key":
+        lines.append("[1/4] 实际生效的 DEEPSEEK_API_KEY：示例占位符 sk-your-api-key（需要替换为真实 Key）")
+    elif k.startswith("sk-") and len(k) < 16:
+        lines.append(f"[1/4] 实际生效的 DEEPSEEK_API_KEY：sk- 前缀但长度仅 {len(k)}（疑似不完整复制）")
+    else:
+        lines.append(f"[1/4] 实际生效的 DEEPSEEK_API_KEY：已配置，前缀 {k[:6]}…，长度 {len(k)}")
+
+    # ② .env 加载路径诊断
+    try:
+        from app.config import get_settings
+        s = get_settings()
+        report = getattr(s, "ENV_LOAD_REPORT", None) or []
+        has_official = getattr(s, "ENV_HAS_OFFICIAL", False)
+        ex_has = getattr(s, "ENV_EXAMPLE_HAS_DEEPSEEK", False)
+        ex_path = getattr(s, "ENV_EXAMPLE_PATH", "")
+    except Exception:
+        report, has_official, ex_has, ex_path = [], False, False, ""
+
+    lines.append("[2/4] .env 加载路径诊断（按优先级顺序搜索，后加载不覆盖已存在的同名变量）：")
+    if not report:
+        lines.append("      （无记录，可能 config.py 版本过旧）")
+    else:
+        for idx, r in enumerate(report, 1):
+            # ✓ / ✗ / - 图标
+            if r.get("loaded"):
+                mark = "✅ LOADED"
+            elif str(r.get("reason", "")).startswith("SKIP"):
+                mark = "⏭  SKIP  "
+            elif str(r.get("reason", "")) == "NOT FOUND":
+                mark = "⚠️ MISS  "
+            else:
+                mark = "❌ FAIL  "
+            path_disp = r.get("path", "")
+            # 过长的路径只取 basename + 前 1 级
+            try:
+                import pathlib
+                _p = pathlib.Path(path_disp)
+                path_disp_short = f"...\\{_p.parent.name}\\{_p.name}" if len(path_disp) > 60 else path_disp
+            except Exception:
+                path_disp_short = path_disp
+            lines.append(f"      {idx:>2}. {mark} | {r.get('comment','')}")
+            lines.append(f"            path   = {path_disp_short}")
+            lines.append(f"            reason = {r.get('reason','')}")
+
+    # ③ 关键提示：.env.example 有 Key 但没读到 = 典型漏复制场景
+    if ex_has and not is_ai_configured():
+        lines.append("[3/4] ⚠️  检测到典型场景：.env.example 中已填了真实 Key，但当前没生效！")
+        lines.append(f"      .env.example 路径 = {ex_path or '(未知)'}")
+        lines.append("      原因：代码默认只读取 .env 文件，不读 .env.example（避免误把示例值当真实值）。")
+        lines.append("      但本次 config.py 已加了 fallback，之所以仍不生效，通常是：")
+        lines.append("        a) 启动后端的进程是在你修改 .env.example 之前启动的（进程环境变量只读一次）")
+        lines.append("        b) 同时存在其他正式 .env（优先级更高），把 .env.example fallback 跳过了")
+    else:
+        lines.append("[3/4] .env.example 中 DEEPSEEK_API_KEY 状态：" + (
+            "已填真实 Key" if ex_has else (
+                "未检测到已填 Key（仍是 sk-your-api-key / sk-xxx 占位或空）"
+            )
+        ))
+
+    # ④ 一键修复命令
+    lines.append("[4/4] 一键修复（Windows PowerShell，复制执行后重启后端）：")
+    lines.append('      方案A（推荐）：复制 .env.example 为正式 .env，不影响 .gitignore 规则')
+    lines.append('          cd g:\\b1提交物\\code\\zhixunyun')
+    lines.append('          if (-not (Test-Path .env)) { Copy-Item .env.example .env } else')
+    lines.append('          { Write-Host ".env 已存在，若 Key 仍空请手动编辑： notepad .env" }')
+    lines.append('          # 然后重启后端：Ctrl+C 再 python run.py')
+    lines.append('      方案B（直接编辑 .env.example 已够用，且仅本次项目用）：.env.example fallback 已支持')
+    lines.append('          只需 Ctrl+C 重启后端 python run.py，新的 config.py 就会在无 .env 时自动读 .env.example')
+    lines.append('')
+    lines.append('Key 申请：https://platform.deepseek.com/api_keys （新用户送额度）')
+    return "\n".join(lines)
 
 
 # =================================================================
@@ -305,8 +487,11 @@ def _judge_one_step_rule(step: Dict[str, Any], ev_text: str) -> Tuple[bool, floa
 
 
 def _judge_one_step_ai(step: Dict[str, Any], ev_text: str) -> Tuple[bool, float, str, str]:
-    """AI 判定单步（优先但非强制，失败回退 rule）。"""
-    if not is_ai_configured() or deepseek_client is None:
+    """AI 判定单步（优先但非强制，失败回退 rule）。
+    
+    注意：`not deepseek_client` 走代理对象 __bool__（自动解析真实 client）。
+    """
+    if not is_ai_configured() or not deepseek_client:
         return _judge_one_step_rule(step, ev_text)
     prompt = f"""你是软件实训步骤判定专家。请按步骤要求与学生提交的证据，判定该步骤是否通过。
 步骤编号：{step.get('index')}
