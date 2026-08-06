@@ -12,7 +12,7 @@
         <div class="st-hero-left">
           <span class="st-hero-chip">
             <span class="st-hero-chip-num">INDEX</span>
-            <span class="st-hero-chip-text">01 · TASK LEDGER · 任务台</span>
+            <span class="st-hero-chip-text"> TASK LEDGER · 任务台</span>
           </span>
           <h1 class="st-hero-title">
             任务台
@@ -215,17 +215,6 @@
                 {{ fmtDeadline(task.deadline) }}
               </div>
             </div>
-            <div class="st-meta-item">
-              <div class="st-meta-label">状态</div>
-              <div class="st-meta-value"
-                   :class="{
-                     'val-urgent': !task.submitted && daysLeft(task) >= 0 && daysLeft(task) <= 3,
-                     'val-overdue': !task.submitted && daysLeft(task) < 0,
-                     'val-done': !!task.submitted
-                   }">
-                {{ statusText(task) }}
-              </div>
-            </div>
           </div>
 
           <!-- 剩余天数进度条 -->
@@ -249,7 +238,7 @@
               :class="task.submitted ? 'st-btn-cobalt' : 'st-btn-seal'"
             >
               <Icon :icon="task.submitted ? 'mdi:refresh-variant' : 'mdi:send-check-outline'" inline width="13" class="mr-1.5" />
-              {{ task.submitted ? '查看评价 / 重新提交' : '🔥 投递成果 · 去提交' }}
+              {{ task.submitted ? '重新提交' : '🔥 投递成果 · 去提交' }}
             </button>
           </div>
         </article>
@@ -285,7 +274,6 @@
           </span>
         </div>
         <div class="st-foot-right">
-          <span>PAGE 01 / 01</span>
           <span class="st-foot-divider">·</span>
           <span>知训云 · ZHI XUN YUN ACADEMY</span>
         </div>
@@ -298,7 +286,7 @@
 // 【核心 API 调用与业务逻辑完全保留，仅做展示层增量：辅助函数 / 状态 / 筛选排序】
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
 import { ElMessage } from 'element-plus'
@@ -471,7 +459,7 @@ const loadTasks = async () => {
   loading.value = true
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   try {
-    const res = await axios.get(`${API_BASE}/api/tasks/pending?student_id=${user.id}`)
+    const res = await api.get(`/api/tasks/pending?student_id=${user.id}`)
     if (res.data.success) tasks.value = res.data.data
   } catch {
     ElMessage.error('任务台账加载失败，请稍后重试')
@@ -491,7 +479,7 @@ const goSubmit = (task: any) => {
 }
 
 const downloadTemplate = (task: any) => {
-  window.open(`${API_BASE}/api/tasks/${task.id}/template`, '_blank')
+  window.open(`/api/tasks/${task.id}/template`, '_blank')
 }
 </script>
 
@@ -1320,7 +1308,7 @@ const downloadTemplate = (task: any) => {
 /* ── 10. Meta 三栏 ── */
 .st-card-meta {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   margin-bottom: 14px;
   position: relative;

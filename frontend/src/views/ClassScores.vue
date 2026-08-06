@@ -342,7 +342,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { Icon } from '@iconify/vue'
 import { ElMessage } from 'element-plus'
 import { API_BASE } from '../config'
@@ -366,7 +366,7 @@ const submitRate = computed(() => {
 const batchExport = async () => {
   exporting.value = true
   try {
-    const res = await axios.post(`${API_BASE}/api/report/batch-excel`, {
+    const res = await api.post(`/api/report/batch-excel`, {
       class_id: route.query.id
     }, { responseType: 'blob' })
 
@@ -391,7 +391,7 @@ const batchExport = async () => {
 const viewStudentDetail = async (row: any) => {
   currentStudentId.value = row.student_id
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/student/${row.student_id}/summary`)
+    const res = await api.get(`/api/statistics/student/${row.student_id}/summary`)
     if (res.data.success) {
       studentDetail.value = res.data.data
       showStudentDetail.value = true
@@ -406,7 +406,7 @@ onMounted(async () => {
   if (!classId) return
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/class/${classId}`)
+    const res = await api.get(`/api/statistics/class/${classId}`)
     if (res.data.success) data.value = res.data.data
   } catch {} finally { loading.value = false }
 })

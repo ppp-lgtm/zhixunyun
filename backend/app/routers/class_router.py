@@ -8,16 +8,13 @@ from app.models.database import SessionLocal
 from app.models.class_models import Class, ClassMember
 from app.models.tables import LoginAccount, Teacher, Student
 from app.models.class_models import Class, ClassMember  # noqa: F811 - 兼容已导入
+from app.utils.auth_deps import (
+    get_db, get_current_user, get_teacher_id, get_student_pk,
+    _account_to_teacher_id, _account_to_student_id,
+)
+from app.utils.auth import decode_token
 
 router = APIRouter(prefix="/api/classes", tags=["班级管理"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def generate_code():
@@ -108,9 +105,13 @@ class JoinRequest(BaseModel):
     student_number: str = ""
 
 
-# 教师创建班级
+# 教师创建班级 — 需要登录认证
 @router.post("/")
-def create_class(req: ClassCreate, db: Session = Depends(get_db)):
+def create_class(
+    req: ClassCreate,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
     code = generate_code()
     while db.query(Class).filter(Class.invite_code == code).first():
         code = generate_code()
@@ -135,18 +136,28 @@ def create_class(req: ClassCreate, db: Session = Depends(get_db)):
     return {"success": True, "data": {"id": c.id, "invite_code": c.invite_code}}
 
 
-# 教师查看自己创建的班级
+# 教师查看自己创建的班级 — 需要登录认证，教师只能看自己的班级
 @router.get("/")
-def get_my_classes(teacher_id: int = 0, db: Session = Depends(get_db)):
-    if teacher_id:
-        # 兼容两种：login_accounts.id（走映射）和 teachers.id（直接查）
-        teacher_pk = _account_to_teacher_id(db, teacher_id)
-        if teacher_pk:
-            classes = db.query(Class).filter(Class.teacher_id == teacher_pk).all()
+def get_my_classes(
+    teacher_id: int = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 从 token 获取当前用户身份
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk:
+        # 教师只能查看自己创建的班级
+        classes = db.query(Class).filter(Class.teacher_id == teacher_pk).all()
+    elif teacher_id:
+        # 非教师角色传入 teacher_id 时也转换并过滤
+        resolved = _account_to_teacher_id(db, teacher_id) if teacher_id else None
+        if resolved:
+            classes = db.query(Class).filter(Class.teacher_id == resolved).all()
         else:
             classes = db.query(Class).filter(Class.teacher_id == teacher_id).all()
     else:
-        classes = db.query(Class).all()
+        # 未登录或非教师，不返回全量数据
+        classes = db.query(Class).filter(Class.status == "active").all()
     return {
         "success": True,
         "data": [
@@ -160,12 +171,21 @@ def get_my_classes(teacher_id: int = 0, db: Session = Depends(get_db)):
     }
 
 
-# 学生查看已加入的班级
+# 学生查看已加入的班级 — 需要登录认证
 @router.get("/my")
-def get_my_enrolled(student_id: int = 0, db: Session = Depends(get_db)):
-    # student_id 约定 login_accounts.id -> students.id
-    stu_pk = _account_to_student_id(db, student_id) if student_id else None
-    fk = stu_pk if stu_pk else student_id
+def get_my_enrolled(
+    student_id: int = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 学生角色只能查看自己的班级
+    stu_pk = get_student_pk(user, db)
+    if stu_pk:
+        fk = stu_pk
+    elif student_id:
+        fk = _account_to_student_id(db, student_id) if student_id else None
+    else:
+        return {"success": True, "data": []}
     memberships = db.query(ClassMember).filter(ClassMember.student_id == fk).all() if fk else []
     class_ids = [m.class_id for m in memberships]
     classes = db.query(Class).filter(Class.id.in_(class_ids)).all() if class_ids else []
@@ -252,12 +272,21 @@ def class_detail(class_id: int, db: Session = Depends(get_db)):
     }
 
 
-# 编辑班级
+# 编辑班级 — 需要登录，只有班级所属教师可以编辑
 @router.put("/{class_id}")
-def update_class(class_id: int, req: ClassUpdate, db: Session = Depends(get_db)):
+def update_class(
+    class_id: int,
+    req: ClassUpdate,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
     c = db.query(Class).filter(Class.id == class_id).first()
     if not c:
         raise HTTPException(404, "班级不存在")
+    # 权限检查：只有该班级的教师可以编辑
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk and c.teacher_id != teacher_pk:
+        raise HTTPException(403, "只能编辑自己创建的班级")
     if req.name is not None: c.name = req.name
     if req.grade is not None: c.grade = req.grade
     if req.major is not None: c.major = req.major
@@ -268,28 +297,47 @@ def update_class(class_id: int, req: ClassUpdate, db: Session = Depends(get_db))
     return {"success": True, "message": "班级信息已更新"}
 
 
-# 解散班级
+# 解散班级 — 需要登录，只有班级所属教师可以解散
 @router.delete("/{class_id}")
-def delete_class(class_id: int, db: Session = Depends(get_db)):
+def delete_class(
+    class_id: int,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
     c = db.query(Class).filter(Class.id == class_id).first()
     if not c:
         raise HTTPException(404, "班级不存在")
+    # 权限检查：只有该班级的教师可以解散
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk and c.teacher_id != teacher_pk:
+        raise HTTPException(403, "只能解散自己创建的班级")
     db.query(ClassMember).filter(ClassMember.class_id == class_id).delete()
     db.delete(c)
     db.commit()
     return {"success": True, "message": "班级已解散"}
 
 
-# 移除学生
+# 移除学生 — 需要登录，只有班级所属教师可以移除
 @router.delete("/{class_id}/students/{member_id}")
-def remove_student(class_id: int, member_id: int, db: Session = Depends(get_db)):
+def remove_student(
+    class_id: int,
+    member_id: int,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    c = db.query(Class).filter(Class.id == class_id).first()
+    if not c:
+        raise HTTPException(404, "班级不存在")
+    # 权限检查
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk and c.teacher_id != teacher_pk:
+        raise HTTPException(403, "只能移除自己班级的学生")
     member = db.query(ClassMember).filter(
         ClassMember.id == member_id,
         ClassMember.class_id == class_id
     ).first()
     if not member:
         raise HTTPException(404, "学生不存在")
-    c = db.query(Class).filter(Class.id == class_id).first()
     if c:
         c.student_count = max(0, c.student_count - 1)
     db.delete(member)

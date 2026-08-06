@@ -10,7 +10,7 @@
       <div class="topbar-inner-mag">
         <div class="brand-mag">
           <div class="brand-mark-mag">
-            <span style="position:relative;z-index:1">知训云</span>
+            <img src="../img/logo.png">
           </div>
           <div class="brand-text-mag">
             <b>ZHI · XUN · YUN</b>
@@ -43,7 +43,7 @@
           <em class="accent-text">印章</em>。
         </h1>
         <p class="hero-sub">
-          「知训云」智能实训评价平台：把实训批改从"下载 zip → 拖 IDE → 写评语"的机械劳动，搬进一个
+          「知训云」智能实训评价平台：把实训批改从机械劳动，搬进一个
           <b class="hero-bold">编辑杂志式 × 科技可视化</b> 的操作台。学生按步骤提交证据，AI 给每条步骤打分；老师和企业方只需聚焦差异点。
         </p>
 
@@ -149,7 +149,6 @@
                       <input type="checkbox" v-model="keepSession" class="w-4 h-4" :style="{accentColor: role.accent}" />
                       <span>保持本次会话</span>
                     </label>
-                    <a href="#" class="forgot-link">忘记密码？</a>
                   </div>
 
                   <div class="login-foot">
@@ -164,14 +163,13 @@
                       <Icon v-else icon="mdi:login" class="text-base" />
                       <span>{{ loadingByRole[role.key] ? '正在验证...' : role.ctaText }}</span>
                     </button>
-                    <span class="meta-note">v3.0 · 仅限{{ role.title }}账号</span>
                   </div>
                 </el-form>
 
                 <div class="register-row">
                   <span>还没有{{ role.title }}账号？</span>
                   <el-button link type="primary" @click="openRegister(role.key)" class="!font-sub !text-base !p-0 !h-auto role-link" :style="{color: role.accent}">
-                    立即注册 →
+                    立即注册
                   </el-button>
                 </div>
               </div>
@@ -313,7 +311,7 @@ const route = useRoute()
 const roles = [
   {
     key: 'student' as RoleKey,
-    chip: '01 · STUDENT',
+    chip: 'STUDENT',
     title: '学生',
     accent: '#C99A2E',        // 琥珀金（杂志风）
     slogan: '交作业 · 看批改 · 追进度 —— 提交即得 AI 即时反馈',
@@ -325,7 +323,7 @@ const roles = [
   },
   {
     key: 'teacher' as RoleKey,
-    chip: '02 · TEACHER',
+    chip: 'TEACHER',
     title: '教师',
     accent: '#3D5AFE',        // 冷钴蓝
     slogan: '发任务 · 评作业 · 出报表 —— AI 初评 + 教师人工复评',
@@ -337,7 +335,7 @@ const roles = [
   },
   {
     key: 'enterprise' as RoleKey,
-    chip: '03 · ENTERPRISE',
+    chip: 'ENTERPRISE',
     title: '企业',
     accent: '#FF5A1F',        // 绯红印章
     slogan: '发岗位 · 挖人才 · 做终评 —— 企业方导师独立视角',
@@ -345,7 +343,7 @@ const roles = [
     usernameLabel: 'HR 账号 / 邮箱',
     usernamePlaceholder: '请输入企业 HR 账号或邮箱',
     passwordLabel: '登录密码',
-    ctaText: '进入企业招聘台',
+    ctaText: '进入企业管理台',
   },
 ]
 
@@ -537,7 +535,8 @@ async function submitLogin(role: RoleKey) {
     }
   } catch (err: any) {
     const status = err.response?.status ?? 0
-    const detail = err.response?.data?.detail
+    // 兼容后端两种返回格式：detail（FastAPI 默认）和 error（自定义 handler）
+    const detail = err.response?.data?.detail || err.response?.data?.error
     let msg = '登录失败，请稍后重试'
     if (status === 0 || !err.response) {
       msg = '无法连接后端服务，请确认 127.0.0.1:8000 是否已启动'
@@ -548,8 +547,6 @@ async function submitLogin(role: RoleKey) {
           : detail || JSON.stringify(err.response.data)
       }`
     } else if (detail) {
-      // ⚠️  严格按用户要求：不暴露"此账号属XX端"信息
-      // 后端对所有 401 已统一输出「用户名或密码错误」，这里直接透传
       msg = String(detail)
     } else if (err.message) {
       msg = err.message
@@ -1075,19 +1072,39 @@ onMounted(() => {
 
 .login-foot {
   margin-top: 18px;
-  display: flex; justify-content: space-between;
+  display: flex; justify-content: center;  /* 比赛：登录按钮 X 轴居中 */
   align-items: center; gap: 10px;
 }
-.meta-note {
-  font-family: var(--ff-mono); font-size: 11px;
-  color: var(--ink-3);
+
+/* 立即注册：橙色按钮化 + 背景板加大（比赛 UI 调整） */
+.role-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px !important;
+  padding: 9px 22px !important;
+  height: auto !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #FF8A5C 0%, #FF5A1F 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px -6px rgba(255, 90, 31, 0.55);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+  text-decoration: none !important;
+}
+.role-link:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px -8px rgba(255, 90, 31, 0.7);
+  background: linear-gradient(135deg, #FF9670 0%, #FF5A1F 100%) !important;
 }
 
 .register-row {
-  margin-top: 14px; text-align: center;
+  margin-top: 16px; text-align: center;
   font-family: var(--ff-sub); font-size: 13px;
   color: var(--ink-3);
-  display: flex; align-items: center; justify-content: center; gap: 6px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
 }
 
 /* Card mag (replicated, 纯色化：移除渐变顶条) */

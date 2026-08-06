@@ -231,10 +231,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     # HTTPException 也走同一个 CORS 补齐逻辑，避免 401/403/404 时浏览器被误报成 CORS
+    # 同时返回 detail 和 error 字段，兼容前端不同版本的读取方式
     resp = JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
+            "detail": exc.detail,
             "error": exc.detail
         }
     )

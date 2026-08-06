@@ -415,20 +415,64 @@ async function exportReport() {
   const token = localStorage.getItem('token') || ''
   const headers: any = {}
   if (token) headers.Authorization = `Bearer ${token}`
+  // UI 层展示 loading（loading 复用匹配 loading 位）
+  const originalLoading = loading.value
+  loading.value = true
   try {
-    const { data } = await axios.get(`${API_BASE}/api/job-match/generate-report`, {
-      headers, params: { class_id: classId.value, job_id: activeJobId.value, top_n: 50, fmt: 'text' }
+    const resp = await axios.get(`${API_BASE}/api/job-match/generate-report`, {
+      headers,
+      params: {
+        class_id: classId.value,
+        job_id: activeJobId.value,
+        top_n: 50,
+        min_score: 40,
+        fmt: 'pdf',
+        token: token || undefined,
+      },
+      responseType: 'blob',
     })
-    const text = data?.report_text || data || '（无报告内容）'
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    // 从后端 Content-Disposition 中提取真实文件名（支持 UTF-8 filename*）
+    let filename = ''
+    const cd = resp.headers?.['content-disposition'] || resp.headers?.['Content-Disposition']
+    if (cd) {
+      const mStar = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(cd)
+      if (mStar && mStar[1]) {
+        try { filename = decodeURIComponent(mStar[1].trim().replace(/^["']|["']$/g, '')) } catch {}
+      }
+      if (!filename) {
+        const m = /filename\s*=\s*"([^"]+)"/i.exec(cd) || /filename\s*=\s*([^;]+)/i.exec(cd)
+        if (m && m[1]) filename = m[1].trim().replace(/^["']|["']$/g, '')
+      }
+    }
+    if (!filename) {
+      const ts = new Date()
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      const tsStr = `${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`
+      const clsName = (classInfo.value?.name || 'class').toString().replace(/[\\/:*?"<>|]/g, '_')
+      const jobName = (jobInfo.value?.title || 'job').toString().replace(/[\\/:*?"<>|]/g, '_')
+      filename = `岗位匹配报告_${clsName}_${jobName}_${tsStr}.pdf`
+    }
+    const blob = new Blob([resp.data], { type: 'application/pdf' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `岗位匹配报告_${classInfo.value?.name || 'class'}_${jobInfo.value?.title || 'job'}_${Date.now()}.txt`
+    a.download = filename
     document.body.appendChild(a); a.click(); a.remove()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
   } catch (e: any) {
-    alert('报告生成失败：' + (e?.message || '未知错误'))
+    // 尝试解析后端返回的 JSON 错误
+    let msg = e?.message || '未知错误'
+    try {
+      if (e?.response?.data instanceof Blob) {
+        const txt = await new Response(e.response.data).text()
+        const obj = JSON.parse(txt)
+        if (obj?.detail) msg = obj.detail
+        else if (typeof obj === 'string') msg = obj
+      }
+    } catch {}
+    alert('PDF 报告生成失败：' + msg)
+  } finally {
+    loading.value = originalLoading
   }
 }
 

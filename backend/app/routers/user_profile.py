@@ -11,7 +11,8 @@ from app.models.tables import (
     LoginAccount, Teacher, Student, Submission, Evaluation, TaskClassRef,
 )
 from app.models.class_models import Class, ClassMember
-from app.utils.auth import hash_password, verify_password
+from app.utils.auth import hash_password, verify_password, decode_token
+from app.utils.auth_deps import get_db, get_current_user, _extract_token
 
 router = APIRouter(prefix="/api/user", tags=["个人中心"])
 
@@ -19,12 +20,10 @@ UPLOAD_DIR = "uploads/avatars"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def _require_self_or_admin(user_id: int, current_user: LoginAccount) -> None:
+    """确保当前登录用户只能访问自己的资料。"""
+    if int(current_user.id) != int(user_id):
+        raise HTTPException(403, "只能访问自己的资料")
 
 
 # --------------------------------------------------------------
@@ -97,7 +96,12 @@ class PasswordChange(BaseModel):
 
 
 @router.get("/profile/{user_id}")
-def get_profile(user_id: int, db: Session = Depends(get_db)):
+def get_profile(
+    user_id: int,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, user)
     ctx = _load_user_context(db, user_id)
     if not ctx:
         raise HTTPException(404, "用户不存在")
@@ -273,7 +277,13 @@ def get_profile(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/profile/{user_id}")
-def update_profile(user_id: int, req: ProfileUpdate, db: Session = Depends(get_db)):
+def update_profile(
+    user_id: int,
+    req: ProfileUpdate,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, user)
     ctx = _load_user_context(db, user_id)
     if not ctx:
         raise HTTPException(404, "用户不存在")
@@ -305,7 +315,13 @@ def update_profile(user_id: int, req: ProfileUpdate, db: Session = Depends(get_d
 
 
 @router.put("/password/{user_id}")
-def change_password(user_id: int, req: PasswordChange, db: Session = Depends(get_db)):
+def change_password(
+    user_id: int,
+    req: PasswordChange,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, user)
     acct = db.query(LoginAccount).filter(LoginAccount.id == user_id).first()
     if not acct:
         raise HTTPException(404, "用户不存在")
@@ -317,7 +333,13 @@ def change_password(user_id: int, req: PasswordChange, db: Session = Depends(get
 
 
 @router.post("/avatar/{user_id}")
-async def upload_avatar(user_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_avatar(
+    user_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, user)
     acct = db.query(LoginAccount).filter(LoginAccount.id == user_id).first()
     if not acct:
         raise HTTPException(404, "用户不存在")
@@ -339,7 +361,12 @@ async def upload_avatar(user_id: int, file: UploadFile = File(...), db: Session 
 
 
 @router.delete("/account/{user_id}")
-def delete_account(user_id: int, db: Session = Depends(get_db)):
+def delete_account(
+    user_id: int,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    _require_self_or_admin(user_id, user)
     ctx = _load_user_context(db, user_id)
     if not ctx:
         raise HTTPException(404, "用户不存在")

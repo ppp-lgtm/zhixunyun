@@ -16,7 +16,7 @@
             <span class="hero-chip-text">{{ currentTask ? '02 · 提交实训成果' : '01 · 自由上传评价' }}</span>
           </span>
           <h1 class="hero-title">
-            {{ currentTask ? '封缄你的作品' : '交付你的成果' }}
+            {{ currentTask ? '上传你的作品' : '交付你的成果' }}
             <span class="hero-underline" aria-hidden="true"></span>
           </h1>
           <p class="hero-sub">
@@ -52,7 +52,7 @@
         <!-- Hero 右侧：装饰性编号标签 -->
         <aside class="hero-right" aria-hidden="true">
           <div class="hero-stamp">
-            <div class="hero-stamp-no">№ {{ uploadNo }}</div>
+            <div class="hero-stamp-no">作品提交</div>
             <div class="hero-stamp-divider"></div>
             <div class="hero-stamp-sub">ZHI XUN YUN · SUBMISSION</div>
           </div>
@@ -295,7 +295,7 @@
 // 兜底链路: async 端点失败 -> 回退老同步 POST /api/upload-eval/
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MagicStick, Loading, UploadFilled } from '@element-plus/icons-vue'
 import { Icon } from '@iconify/vue'
@@ -510,7 +510,7 @@ const submitEvaluate = async () => {
     const formData = buildFormData()
     formData.append('check_plagiarism', 'true')
     formData.append('mode', mode)
-    const resp = await axios.post(`${API_BASE}/api/upload-eval/async`, formData, {
+    const resp = await api.post(`/api/upload-eval/async`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     if (resp.data?.success && resp.data?.job_id) {
@@ -532,7 +532,7 @@ async function runSyncFallback(_mode: string) {
   fallbackLoading.value = true
   try {
     const formData = buildFormData()
-    const res = await axios.post(`${API_BASE}/api/upload-eval/`, formData, {
+    const res = await api.post(`/api/upload-eval/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     if (res.data?.success) {

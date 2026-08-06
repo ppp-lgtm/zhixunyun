@@ -13,7 +13,7 @@
         <div class="ms-hero-left">
           <span class="ms-hero-chip">
             <span class="ms-hero-chip-num">INDEX</span>
-            <span class="ms-hero-chip-text">03 · ACADEMIC TRANSCRIPT · 学业台账</span>
+            <span class="ms-hero-chip-text"> ACADEMIC TRANSCRIPT · 学业台账</span>
           </span>
           <h1 class="ms-hero-title">
             我的成绩册
@@ -389,18 +389,6 @@
         </div>
       </div>
 
-      <!-- 页脚 -->
-      <footer class="ms-foot reveal reveal-5" v-if="loaded">
-        <div class="msf-left">
-          <Icon icon="mdi:book-open-page-variant" class="msf-ic" />
-          <span>知训云 · <b>学业台账</b> Academic Transcript Ledger</span>
-        </div>
-        <div class="msf-right">
-          <span>三栏/两栏评分 · 多维度加权</span>
-          <span class="msf-dot">·</span>
-          <span class="msf-k">最新更新 {{ ledgerDateText }}</span>
-        </div>
-      </footer>
 
     </div>
   </div>
@@ -409,7 +397,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
 
@@ -428,13 +416,13 @@ const loadRecords = async (page = 1) => {
   if (!user.id) return
 
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/student/${user.id}?page=${page}&page_size=${pageSize}`)
+    const res = await api.get(`/api/statistics/student/${user.id}?page=${page}&page_size=${pageSize}`)
     if (res.data.success) {
       data.value = res.data.data
       totalRecords.value = res.data.data.total_count
 
       try {
-        const tRes = await axios.get(`${API_BASE}/api/statistics/student/${user.id}/teacher-scores`)
+        const tRes = await api.get(`/api/statistics/student/${user.id}/teacher-scores`)
         if (tRes.data.success) {
           const teacherMap: any = {}
           tRes.data.data.forEach((t: any) => {
@@ -461,7 +449,7 @@ onMounted(async () => {
   await loadRecords(currentPage.value)
 
   try {
-    const growthRes = await axios.get(`${API_BASE}/api/statistics/student/${user.id}/growth`)
+    const growthRes = await api.get(`/api/statistics/student/${user.id}/growth`)
     if (growthRes.data.success) growth.value = growthRes.data.data
   } catch {}
 

@@ -229,16 +229,19 @@
                 <pre class="font-mono text-[13.5px] bg-paper-2 rounded-2xl border border-line/70 p-5 whitespace-pre-wrap text-ink-2 leading-[1.75] max-h-[52vh] overflow-auto">{{ contentPreview }}</pre>
                 <div v-if="detail?.files || activeSubmission?.files || activeSubmission?.download_url"
                      class="mt-5 flex flex-wrap gap-3">
-                  <a v-for="(f,i) in (detail?.files || [])" :key="i"
-                     :href="f.url || '#'" class="chip-mag !text-[13px] !py-2 !px-4">
+                  <button v-for="(f,i) in (detail?.files || [])" :key="i"
+                          @click="downloadFile(f.url || f.download_url || '#', f.name || f.filename || undefined)"
+                          :disabled="downloading"
+                          class="chip-mag !text-[13px] !py-2 !px-4 disabled:opacity-60">
                     <Icon icon="mdi:download-outline" class="mr-1.5" />{{ f.name }}
-                  </a>
-                  <a v-if="activeSubmission?.download_url && !detail?.files?.length"
-                     class="chip-mag !text-[13px] !py-2 !px-4"
-                     :href="API_BASE + activeSubmission.download_url" target="_blank">
+                  </button>
+                  <button v-if="activeSubmission?.download_url && !detail?.files?.length"
+                          @click="downloadFile(API_BASE + activeSubmission.download_url, activeSubmission.filename || undefined)"
+                          :disabled="downloading"
+                          class="chip-mag !text-[13px] !py-2 !px-4 disabled:opacity-60">
                     <Icon icon="mdi:download-outline" class="mr-1.5" />
-                    {{ activeSubmission.filename }}
-                  </a>
+                    {{ activeSubmission.filename || '下载提交资料' }}
+                  </button>
                 </div>
                 <div v-if="detail?.student_classes?.length" class="mt-6 p-5 bg-cobalt/5 rounded-2xl border border-cobalt/15">
                   <div class="section-label !mb-2">STUDENT PROFILE · 学生档案</div>
@@ -520,6 +523,65 @@ const compareId = ref<number | null>(null)
 const compareLoaded = ref(false)
 const compareLoading = ref(false)
 const compareData = ref<any>({ parties: [], dimension_breakdown: [], summary: null })
+
+// 下载提交资料（带 Authorization 头，避免直接跳转 href 缺失 Token）
+const downloading = ref(false)
+async function downloadFile(url: string, suggestedName?: string) {
+  if (!url) { ElMessage.warning('下载链接为空'); return }
+  const token = localStorage.getItem('token') || ''
+  const headers: any = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  // 补双保险：query token 也带上，防止某些场景 header 丢失
+  const qSep = url.includes('?') ? '&' : '?'
+  const fullUrl = token ? `${url}${qSep}token=${encodeURIComponent(token)}` : url
+  downloading.value = true
+  try {
+    const resp = await axios.get(fullUrl, {
+      headers,
+      responseType: 'blob',
+    })
+    let filename = suggestedName || ''
+    const cd = (resp.headers as any)?.['content-disposition']
+    if (cd) {
+      const mStar = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(cd)
+      if (mStar) filename = decodeURIComponent(mStar[1].trim())
+      if (!filename) {
+        const m = /filename\s*=\s*"?([^";]+)"?/i.exec(cd)
+        if (m) filename = decodeURIComponent(m[1].trim())
+      }
+    }
+    if (!filename && url) {
+      try {
+        const m = /\/download(?:\/|%2F)?([^?#/\\]+)/.exec(url)
+        if (m) filename = decodeURIComponent(m[1])
+      } catch {}
+    }
+    if (!filename) filename = suggestedName || `提交资料_${Date.now()}.bin`
+    const blob = new Blob([resp.data], {
+      type: (resp.headers as any)?.['content-type'] || 'application/octet-stream'
+    })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href; a.download = filename; document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(href), 2000)
+    ElMessage.success(`已开始下载「${filename}」`)
+  } catch (e: any) {
+    console.error('下载提交资料失败', e)
+    let msg = e.message || '未知错误'
+    try {
+      if (e?.response?.data instanceof Blob) {
+        const text = await e.response.data.text()
+        try { const j = JSON.parse(text); if (j?.detail) msg = j.detail; else if (j?.error) msg = j.error } catch {}
+      } else if (e?.response?.data) {
+        if (e.response.data.detail) msg = e.response.data.detail
+        else if (e.response.data.error) msg = e.response.data.error
+      }
+    } catch {}
+    ElMessage.error('下载失败：' + msg)
+  } finally {
+    downloading.value = false
+  }
+}
 
 // 企业评价表单
 const evalDims = ref<{name:string,score:number,reason:string}[]>([])

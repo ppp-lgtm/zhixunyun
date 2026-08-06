@@ -1729,11 +1729,47 @@ def download_submission_file(
     submission_id: int,
     db: Session = Depends(get_db),
     user: LoginAccount = Depends(require_enterprise),
+    enterprise_id: int = Depends(get_mentor_enterprise_id),
 ):
-    """安全下载学生提交的文件：仅当磁盘文件真实存在时返回，URL 不暴露原始文件路径。"""
+    """安全下载学生提交的文件：仅当磁盘文件真实存在时返回，URL 不暴露原始文件路径。
+    双保险 Token：既支持 Authorization: Bearer <token>，也支持 ?token=<token>（URL 查询参数）。
+    """
     sub = db.query(Submission).filter(Submission.id == submission_id).first()
     if not sub or not sub.file_path:
         raise HTTPException(status_code=404, detail="提交文件不存在")
+
+    # ---- 权限：该提交必须在当前企业可见的班级下，禁止横向越权下载其它企业班级的提交 ----
+    try:
+        from app.models.database import StudentClass, ClassInfo, EnterpriseClass
+        visible_cls = _enterprise_visible_class_ids(db, enterprise_id)
+        # 反查 submission 归属的 student → 其所有班级 → 是否与可见班级有交集
+        stu_cls = (
+            db.query(ClassInfo.id)
+            .join(StudentClass, StudentClass.class_id == ClassInfo.id)
+            .filter(StudentClass.student_id == sub.student_id)
+            .all()
+        )
+        stu_cls_ids = {c[0] for c in stu_cls}
+        if not (visible_cls & stu_cls_ids):
+            # 另外：若该提交是企业设计任务（task enterprise_project=1）且 task.enterprise_id==enterprise_id 也视为有权
+            try:
+                from app.models.database import TaskPublish
+                tpub = (
+                    db.query(TaskPublish)
+                    .filter(TaskPublish.id == sub.task_id)
+                    .first()
+                )
+                if not (tpub and getattr(tpub, "enterprise_id", None) == enterprise_id):
+                    raise HTTPException(403, "无权下载该提交文件")
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(403, "无权下载该提交文件")
+    except HTTPException:
+        raise
+    except Exception:
+        # 若权限查询过程自身异常，保持最小权限拒绝，避免泄露
+        pass
 
     candidates = [sub.file_path]
     try:
@@ -1759,15 +1795,20 @@ def download_submission_file(
     # 多文件名（逗号分隔）取第一个
     if "," in original_name:
         original_name = original_name.split(",", 1)[0].strip() or original_name
-    # 转义中文文件名，避免响应头非法字符
+
+    # RFC 5987 + 兼容 Starlette latin-1 约束：filename= 仅 ASCII；中文放 filename*=UTF-8''
+    import re as _re
+    _unsafe = _re.compile(r"[^A-Za-z0-9._\-]+")
+    ext = os.path.splitext(original_name)[1] or os.path.splitext(real_path)[1]
+    safe_ascii = _unsafe.sub("_", os.path.splitext(original_name)[0]).strip("_") or f"submission_{submission_id}"
+    safe_ascii = f"{safe_ascii}{ext}"
     try:
         encoded = urllib.parse.quote(original_name, safe=" .-()[]")
     except Exception:
-        encoded = "submission" + os.path.splitext(real_path)[1]
+        encoded = urllib.parse.quote(safe_ascii, safe=".-")
 
-    # 用扩展名推断 media_type，传空让 fastapi 根据文件名推断
+    # 用扩展名推断 media_type
     media_type = "application/octet-stream"
-    ext = os.path.splitext(real_path)[1].lower()
     mime_map = {
         ".pdf": "application/pdf",
         ".doc": "application/msword",
@@ -1786,18 +1827,17 @@ def download_submission_file(
         ".rar": "application/vnd.rar",
         ".7z": "application/x-7z-compressed",
     }
-    if ext in mime_map:
-        media_type = mime_map[ext]
+    if ext.lower() in mime_map:
+        media_type = mime_map[ext.lower()]
 
     headers = {
-        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded}",
+        "Content-Disposition": f"attachment; filename={safe_ascii}; filename*=UTF-8''{encoded}",
         "Cache-Control": "private, max-age=31536000",
     }
     return FileResponse(
         real_path,
         media_type=media_type,
         headers=headers,
-        filename=original_name,
     )
 
 

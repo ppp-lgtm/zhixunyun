@@ -474,7 +474,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
@@ -495,9 +495,9 @@ const editForm = reactive({
 const pwdForm = reactive({ old_password: '', new_password: '', confirm_password: '' })
 
 const avatarUrl = computed(() => {
-  if (profile.value?.avatar) return `${API_BASE}/uploads/avatars/${profile.value.avatar}`
+  if (profile.value?.avatar) return `/uploads/avatars/${profile.value.avatar}`
   const saved = localStorage.getItem('user_avatar')
-  if (saved) return `${API_BASE}/uploads/avatars/${saved}`
+  if (saved) return `/uploads/avatars/${saved}`
   return ''
 })
 const initial = computed(() =>
@@ -527,7 +527,7 @@ onMounted(async () => {
   user.value = JSON.parse(data)
 
   try {
-    const res = await axios.get(`${API_BASE}/api/user/profile/${user.value.id}`)
+    const res = await api.get(`/api/user/profile/${user.value.id}`)
     if (res.data.success) {
       const p = res.data.data || {}
       profile.value = p
@@ -555,7 +555,7 @@ const saveProfile = async () => {
       payload.real_name = editForm.real_name
       payload.user_number = editForm.user_number
     }
-    await axios.put(`${API_BASE}/api/user/profile/${user.value.id}`, payload)
+    await api.put(`/api/user/profile/${user.value.id}`, payload)
     ElMessage.success('资料已更新')
     if (editForm.real_name) {
       user.value.real_name = editForm.real_name
@@ -577,7 +577,7 @@ const changePassword = async () => {
   }
   changingPwd.value = true
   try {
-    await axios.put(`${API_BASE}/api/user/password/${user.value.id}`, {
+    await api.put(`/api/user/password/${user.value.id}`, {
       old_password: pwdForm.old_password,
       new_password: pwdForm.new_password,
     })
@@ -597,7 +597,7 @@ const uploadAvatar = async (options: any) => {
   const fd = new FormData()
   fd.append('file', options.file)
   try {
-    const res = await axios.post(`${API_BASE}/api/user/avatar/${user.value.id}`, fd)
+    const res = await api.post(`/api/user/avatar/${user.value.id}`, fd)
     if (res.data.success) {
       localStorage.setItem('user_avatar', res.data.avatar)
       ElMessage.success('头像已更新')
@@ -615,7 +615,7 @@ const deleteAccount = async () => {
       '最后确认',
       { type: 'error', confirmButtonText: '确认注销', cancelButtonText: '取消' },
     )
-    await axios.delete(`${API_BASE}/api/user/account/${user.value.id}`)
+    await api.delete(`/api/user/account/${user.value.id}`)
     localStorage.clear()
     ElMessage.success('账号已注销')
     router.push('/login')

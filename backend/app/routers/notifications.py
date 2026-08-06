@@ -1,20 +1,13 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 from app.models.database import SessionLocal
-from app.models.tables import Task, Submission, Evaluation, Teacher, Student
+from app.models.tables import Task, Submission, Evaluation, Teacher, Student, LoginAccount
 from app.models.class_models import Class, ClassMember
+from app.utils.auth_deps import get_db, get_current_user, get_student_pk, get_teacher_id
 
 router = APIRouter(prefix="/api/notifications", tags=["消息通知"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # ============================================================
@@ -40,7 +33,15 @@ class MarkReadRequest(BaseModel):
 
 
 @router.get("/student/{student_id}")
-def student_notifications(student_id: int, read_since: Optional[int] = 0, db: Session = Depends(get_db)):
+def student_notifications(
+    student_id: int,
+    read_since: Optional[int] = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 学生只能查看自己的通知
+    if user.role == "student" and int(user.id) != int(student_id):
+        raise HTTPException(status_code=403, detail="只能查看自己的通知")
     from datetime import datetime, timedelta
     student_pk = _account_to_student_pk(db, student_id)
     if not student_pk:
@@ -119,7 +120,15 @@ def student_notifications(student_id: int, read_since: Optional[int] = 0, db: Se
 
 
 @router.get("/teacher/{teacher_id}")
-def teacher_notifications(teacher_id: int, read_since: Optional[int] = 0, db: Session = Depends(get_db)):
+def teacher_notifications(
+    teacher_id: int,
+    read_since: Optional[int] = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 教师只能查看自己的通知
+    if user.role == "teacher" and int(user.id) != int(teacher_id):
+        raise HTTPException(status_code=403, detail="只能查看自己的通知")
     from datetime import datetime, timedelta
     teacher_pk = _account_to_teacher_pk(db, teacher_id)
     if not teacher_pk:

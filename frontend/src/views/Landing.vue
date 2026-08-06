@@ -234,7 +234,7 @@
               准备好开始了吗？
             </div>
             <h2 class="font-display font-black text-[36px] sm:text-[44px] leading-[1.1] tracking-tight mb-4">
-              立即开通智讯云，<br class="hidden sm:block" />让每个实训学生都拥有<strong class="underline decoration-white/40 decoration-4 underline-offset-4">AI 导师 + 企业 HR</strong>。
+              立即开通知训云，<br class="hidden sm:block" />让每个实训学生都拥有<strong class="underline decoration-white/40 decoration-4 underline-offset-4">AI 导师 + 企业 HR</strong>。
             </h2>
             <p class="text-white/80 text-[14.5px] max-w-xl leading-[1.9]">
               1 分钟完成配置；无公网大模型 Key 时启用内置静态分析引擎，照样出结果。
@@ -262,7 +262,7 @@
             <Icon icon="mdi:hexagon-slice-6" class="text-base" />
           </div>
           <div>
-            <span class="font-display font-bold text-ink">智讯云 ZhiXunYun</span>
+            <span class="font-display font-bold text-ink">知训云 ZhiXunYun</span>
             <span class="mx-2 text-ink-4/60">·</span>
             <span>© 2026 参赛作品 · 实训教学评价系统 v2.0.0</span>
           </div>

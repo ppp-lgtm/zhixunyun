@@ -160,7 +160,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '../api'
 import { ElMessage } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
@@ -176,7 +176,7 @@ onMounted(async () => {
   // 加载完整用户信息
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   try {
-    const res = await axios.get(`${API_BASE}/api/user/profile/${user.id}`)
+    const res = await api.get(`/api/user/profile/${user.id}`)
     if (res.data.success) {
       user.user_number = res.data.data.user_number || ''
       localStorage.setItem('user', JSON.stringify(user))
@@ -187,7 +187,7 @@ onMounted(async () => {
 const loadMyClasses = async () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   try {
-    const res = await axios.get(`${API_BASE}/api/classes/my?student_id=${user.id}`)
+    const res = await api.get(`/api/classes/my?student_id=${user.id}`)
     if (res.data.success) myClasses.value = res.data.data
   } catch {}
 }
@@ -197,7 +197,7 @@ const joinClass = async () => {
   joining.value = true
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
-    await axios.post(`${API_BASE}/api/classes/join`, {
+    await api.post(`/api/classes/join`, {
       invite_code: inviteCode.value.trim().toUpperCase(),
       student_id: user.id,
       student_name: user.real_name || user.username,
@@ -214,8 +214,8 @@ const joinClass = async () => {
 const showRanking = async (c: any) => {
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   try {
-    const res = await axios.get(
-      `${API_BASE}/api/statistics/class/${c.id}/ranking?student_id=${user.id}`
+    const res = await api.get(
+      `/api/statistics/class/${c.id}/ranking?student_id=${user.id}`
     )
     if (res.data.success) {
       ranking.value = res.data.data

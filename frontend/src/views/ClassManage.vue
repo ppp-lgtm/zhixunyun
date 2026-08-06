@@ -258,10 +258,9 @@
 // 【完全保留你原有的所有业务逻辑，一行未改！只做视觉升级】
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Icon } from '@iconify/vue'
-import { API_BASE } from '../config'
 
 const router = useRouter()
 const loading = ref(false)
@@ -288,7 +287,7 @@ const loadClasses = async () => {
   loading.value = true
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
-    const res = await axios.get(`${API_BASE}/api/classes/?teacher_id=${user.id}`)
+    const res = await api.get(`/api/classes/?teacher_id=${user.id}`)
     if (res.data.success) classes.value = res.data.data
   } catch {} finally { loading.value = false }
 }
@@ -298,7 +297,7 @@ const createClass = async () => {
   saving.value = true
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
-    await axios.post(`${API_BASE}/api/classes/`, {
+    await api.post(`/api/classes/`, {
       ...form,
       teacher_id: user.id,
       teacher_name: user.real_name || user.username
@@ -329,7 +328,7 @@ const saveEdit = async () => {
   if (!editForm.name) { ElMessage.warning('请输入班级名称'); return }
   saving.value = true
   try {
-    await axios.put(`${API_BASE}/api/classes/${editForm.id}`, {
+    await api.put(`/api/classes/${editForm.id}`, {
       name: editForm.name,
       grade: editForm.grade,
       major: editForm.major,
@@ -353,7 +352,7 @@ const openScores = (classId: number) => {
 
 const viewDetail = async (c: any) => {
   try {
-    const res = await axios.get(`${API_BASE}/api/classes/${c.id}/detail`)
+    const res = await api.get(`/api/classes/${c.id}/detail`)
     if (res.data.success) {
       detailClass.value = res.data.data
       showDetail.value = true
@@ -370,7 +369,7 @@ const copyCode = (code: string) => {
 const deleteClass = async (id: number) => {
   try {
     await ElMessageBox.confirm('确定解散该班级？所有学生将被移除。', '警告', { type: 'warning' })
-    await axios.delete(`${API_BASE}/api/classes/${id}`)
+    await api.delete(`/api/classes/${id}`)
     ElMessage.success('班级已解散')
     loadClasses()
   } catch {}
@@ -379,7 +378,7 @@ const deleteClass = async (id: number) => {
 const removeStudent = async (memberId: number) => {
   try {
     await ElMessageBox.confirm('确定移除该学生？', '提示', { type: 'warning' })
-    await axios.delete(`${API_BASE}/api/classes/${detailClass.value.id}/students/${memberId}`)
+    await api.delete(`/api/classes/${detailClass.value.id}/students/${memberId}`)
     ElMessage.success('已移除')
     viewDetail(detailClass.value)
   } catch {}

@@ -330,7 +330,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
 
@@ -354,7 +354,7 @@ onMounted(async () => {
       await loadTeacherStats()
       await loadRecentActivities()
       try {
-        const res = await axios.get(`${API_BASE}/api/classes/?teacher_id=${user.value.id}`)
+        const res = await api.get(`/api/classes/?teacher_id=${user.value.id}`)
         if (res.data.success) myClasses.value = res.data.data
       } catch {}
     }
@@ -362,11 +362,11 @@ onMounted(async () => {
     if (user.value.role === 'student') {
       await loadStudentStats()
       try {
-        const res = await axios.get(`${API_BASE}/api/classes/my?student_id=${user.value.id}`)
+        const res = await api.get(`/api/classes/my?student_id=${user.value.id}`)
         if (res.data.success) studentClasses.value = res.data.data
       } catch {}
       try {
-        const taskRes = await axios.get(`${API_BASE}/api/tasks/pending?student_id=${user.value.id}`)
+        const taskRes = await api.get(`/api/tasks/pending?student_id=${user.value.id}`)
         if (taskRes.data.success) {
           pendingCount.value = taskRes.data.data.filter((t: any) => !t.submitted).length
         }
@@ -384,8 +384,8 @@ onMounted(async () => {
 const loadTeacherStats = async () => {
   try {
     const [overviewRes, classesRes] = await Promise.all([
-      axios.get(`${API_BASE}/api/statistics/overview`),
-      axios.get(`${API_BASE}/api/classes/?teacher_id=${user.value.id}`)
+      api.get(`/api/statistics/overview`),
+      api.get(`/api/classes/?teacher_id=${user.value.id}`)
     ])
     const overview = overviewRes.data.success ? overviewRes.data.data : {}
     const classes = classesRes.data.success ? classesRes.data.data : []
@@ -402,7 +402,7 @@ const loadTeacherStats = async () => {
 
 const loadStudentStats = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/student/${user.value.id}`)
+    const res = await api.get(`/api/statistics/student/${user.value.id}`)
     if (res.data.success) {
       const d = res.data.data
       studentStats.value = {
@@ -417,7 +417,7 @@ const loadStudentStats = async () => {
 
 const loadRecentActivities = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/activities`)
+    const res = await api.get(`/api/statistics/activities`)
     if (res.data.success) {
       recentActivities.value = res.data.data
     }
@@ -427,7 +427,7 @@ const loadRecentActivities = async () => {
 const loadJobMatchForHome = async () => {
   jobMatchLoading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/job-match/${user.value.id}`)
+    const res = await api.get(`/api/statistics/job-match/${user.value.id}`)
     if (res.data.success) {
       cachedJobMatch.value = res.data.data
       localStorage.setItem('home_job_match', JSON.stringify(res.data.data))

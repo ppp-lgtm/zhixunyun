@@ -263,9 +263,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { Icon } from '@iconify/vue'
-import { API_BASE } from '../config'
 
 const router = useRouter()
 const route = useRoute()
@@ -291,7 +290,7 @@ const doSearch = () => {
   }
   searchTimer = setTimeout(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/api/search/?q=${encodeURIComponent(searchKeyword.value)}`)
+      const res = await api.get(`/api/search/?q=${encodeURIComponent(searchKeyword.value)}`)
       if (res.data.success) searchResults.value = res.data.data
     } catch { searchResults.value = [] }
   }, 300)
@@ -305,10 +304,10 @@ const goToResult = (item: any) => {
 
 const avatarUrl = computed(() => {
   if (user.value?.avatar) {
-    return `${API_BASE}/uploads/avatars/${user.value.avatar}`
+    return `/uploads/avatars/${user.value.avatar}`
   }
   const saved = localStorage.getItem('user_avatar')
-  if (saved) return `${API_BASE}/uploads/avatars/${saved}`
+  if (saved) return `/uploads/avatars/${saved}`
   return ''
 })
 
@@ -334,9 +333,9 @@ const checkNotifications = async () => {
     let url = ''
     const readSince = localStorage.getItem(`notifyReadAt_${user.value.id}`) || '0'
     if (user.value.role === 'student') {
-      url = `${API_BASE}/api/notifications/student/${user.value.id}?read_since=${readSince}`
+      url = `/api/notifications/student/${user.value.id}?read_since=${readSince}`
     } else if (user.value.role === 'teacher') {
-      url = `${API_BASE}/api/notifications/teacher/${user.value.id}?read_since=${readSince}`
+      url = `/api/notifications/teacher/${user.value.id}?read_since=${readSince}`
     } else if (user.value.role === 'enterprise') {
       notifyCount.value = 0
       notifications.value = []
@@ -344,7 +343,7 @@ const checkNotifications = async () => {
     }
     if (!url) return
 
-    const res = await axios.get(url)
+    const res = await api.get(url)
     if (res.data.success) {
       notifyCount.value = res.data.data.total_unread
       notifications.value = res.data.data.notifications

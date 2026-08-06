@@ -592,7 +592,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onActivated, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { ElMessage } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
@@ -616,6 +616,30 @@ const editingComment = ref('')
 const unscoredCount = ref(0)
 const nextUnscoredId = ref<number | null>(null)
 const currentTaskId = ref<number | null>(null)
+// 任务要求文案：优先取 localStorage 缓存的任务标题/描述，否则回退默认值
+const taskDetailText = computed(() => {
+  try {
+    const raw = localStorage.getItem('current_task_info')
+    if (raw) {
+      const info = JSON.parse(raw)
+      const parts: string[] = []
+      if (info.title) parts.push(`任务标题：${info.title}`)
+      if (info.courseName) parts.push(`所属课程：${info.courseName}`)
+      if (info.description) parts.push(info.description)
+      if (info.requirements) parts.push(info.requirements)
+      if (parts.length) return parts.join('\n\n')
+    }
+  } catch {}
+  try {
+    const er = localStorage.getItem('eval_result')
+    if (er) {
+      const r = JSON.parse(er)
+      if (r.task_requirements) return r.task_requirements
+      if (r.task_title || r.task_name) return `任务：${r.task_title || r.task_name}`
+    }
+  } catch {}
+  return '见实训任务详情'
+})
 const studentInfo = reactive({
   name: '',
   number: '',
@@ -1099,7 +1123,7 @@ const submitTeacherScore = async () => {
       cleanScores.reduce((sum, s) => sum + s.score, 0) / cleanScores.length
     )
     
-    const response = await axios.post(`${API_BASE}/api/teacher/score`, {
+    const response = await api.post(`/api/teacher/score`, {
       submission_id: result.value.submission_id,
       scores: cleanScores,
       total_score: totalScore,
@@ -1162,7 +1186,7 @@ const goNextUnscored = async () => {
   }
   
   try {
-    const res = await axios.get(`${API_BASE}/api/tasks/${currentTaskId.value}/detail`)
+    const res = await api.get(`/api/tasks/${currentTaskId.value}/detail`)
     if (res.data.success) {
       const detail = res.data.data
       const nextSub = detail.submissions.find((s: any) => s.submission_id === nextUnscoredId.value)
@@ -1202,25 +1226,56 @@ const exportExcel = async () => {
     const evaluation = (activeTab.value === 'teacher' && teacherSaved.value)
       ? { total: teacherData.value.total, scores: teacherData.value.scores, comment: teacherData.value.comment }
       : result.value.evaluation
-    const res = await axios.post(`${API_BASE}/api/report/excel`, {
-      task_requirements: '见实训要求',
+    const res = await api.post(`/api/report/excel`, {
+      task_requirements: taskDetailText.value || '见实训要求',
       evaluation,
-      student_name: studentName.value
-    }, { responseType: 'blob' })
-    
-    const blob = new Blob([res.data])
+      student_name: studentName.value || '学生'
+    }, {
+      headers: { ...authHeaders() },
+      responseType: 'blob',
+    })
+    // 解析后端 Content-Disposition 获取真实文件名
+    let filename = ''
+    const cd = (res.headers as any)?.['content-disposition']
+    if (cd) {
+      const mStar = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(cd)
+      if (mStar) filename = decodeURIComponent(mStar[1].trim())
+      if (!filename) {
+        const m = /filename\s*=\s*"?([^";]+)"?/i.exec(cd)
+        if (m) filename = decodeURIComponent(m[1].trim())
+      }
+    }
+    if (!filename) {
+      const ts = new Date()
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      const tag = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`
+      const safe = (studentName.value || '学生').replace(/[\\/:*?"<>|\s]/g, '_')
+      filename = `实训评价报告_${safe}_${tag}.xlsx`
+    }
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `实训评价报告_${Date.now()}.xlsx`
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
+    setTimeout(() => window.URL.revokeObjectURL(url), 2000)
     ElMessage.success('Excel 报告下载成功！')
   } catch (err: any) {
     console.error('导出Excel失败', err)
-    ElMessage.error('导出失败：' + (err.message || '未知错误'))
+    // 尝试解析后端 JSON 错误
+    let msg = err.message || '未知错误'
+    try {
+      if (err?.response?.data?.type === 'application/json') {
+        const text = await err.response.data.text()
+        const j = JSON.parse(text)
+        if (j?.detail) msg = j.detail
+      }
+    } catch {}
+    ElMessage.error('导出失败：' + msg)
   }
 }
 
@@ -1229,25 +1284,52 @@ const exportPdf = async () => {
     const evaluation = (activeTab.value === 'teacher' && teacherSaved.value)
       ? { total: teacherData.value.total, scores: teacherData.value.scores, comment: teacherData.value.comment }
       : result.value.evaluation
-    const res = await axios.post(`${API_BASE}/api/report/pdf`, {
-      task_requirements: '见实训要求',
+    const res = await api.post(`/api/report/pdf`, {
+      task_requirements: taskDetailText.value || '见实训要求',
       evaluation,
-      student_name: studentName.value
-    }, { responseType: 'blob' })
-    
-    const blob = new Blob([res.data])
+      student_name: studentName.value || '学生'
+    }, {
+      headers: { ...authHeaders() },
+      responseType: 'blob',
+    })
+    let filename = ''
+    const cd = (res.headers as any)?.['content-disposition']
+    if (cd) {
+      const mStar = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(cd)
+      if (mStar) filename = decodeURIComponent(mStar[1].trim())
+      if (!filename) {
+        const m = /filename\s*=\s*"?([^";]+)"?/i.exec(cd)
+        if (m) filename = decodeURIComponent(m[1].trim())
+      }
+    }
+    if (!filename) {
+      const ts = new Date()
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      const tag = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`
+      const safe = (studentName.value || '学生').replace(/[\\/:*?"<>|\s]/g, '_')
+      filename = `实训评价报告_${safe}_${tag}.pdf`
+    }
+    const blob = new Blob([res.data], { type: 'application/pdf' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `实训评价报告_${Date.now()}.pdf`
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
+    setTimeout(() => window.URL.revokeObjectURL(url), 2000)
     ElMessage.success('PDF 报告下载成功！')
   } catch (err: any) {
     console.error('导出PDF失败', err)
-    ElMessage.error('导出失败：' + (err.message || '未知错误'))
+    let msg = err.message || '未知错误'
+    try {
+      if (err?.response?.data?.type === 'application/json') {
+        const text = await err.response.data.text()
+        const j = JSON.parse(text)
+        if (j?.detail) msg = j.detail
+      }
+    } catch {}
+    ElMessage.error('导出失败：' + msg)
   }
 }
 
@@ -1261,9 +1343,9 @@ async function loadTripartite(force = false) {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     const subId = result.value.submission_id
     const url = user.role === 'enterprise'
-      ? `${API_BASE}/api/enterprise/evaluations/compare/${subId}`
-      : `${API_BASE}/api/enterprise/student/compare/${subId}`
-    const { data } = await axios.get(url, { headers: authHeaders() })
+      ? `/api/enterprise/evaluations/compare/${subId}`
+      : `/api/enterprise/student/compare/${subId}`
+    const { data } = await api.get(url, { headers: authHeaders() })
     const payload = (data as any)?.data || (data as any)
     if (payload && (payload.parties || payload.summary)) {
       tripartiteData.value = payload
@@ -1351,8 +1433,8 @@ async function initDetail(forceReload = false) {
     // 2) 有 submission_id 就拉教师独立保存分 + 三方对标
     if (result.value?.submission_id) {
       try {
-        const res = await axios.get(
-          `${API_BASE}/api/teacher/scores/${result.value.submission_id}`,
+        const res = await api.get(
+          `/api/teacher/scores/${result.value.submission_id}`,
           { headers: authHeaders() }
         )
         if (res.data.success && res.data.data.teacher_score) {

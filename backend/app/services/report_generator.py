@@ -279,90 +279,448 @@ def _ensure_fpdf():
 REPORT_DIR = "reports"
 os.makedirs(REPORT_DIR, exist_ok=True)
 
+# ============================================================
+#  Shared palette (match job_match report palette)
+# ============================================================
+RGB_SEAL = (255, 90, 31)       # 印章红：主标题、装饰条
+RGB_AMBER = (244, 183, 64)     # 琥珀金：副装饰
+RGB_JADE = (29, 185, 85)       # 翡翠：亮点/通过
+RGB_COBALT = (61, 90, 254)     # 钴蓝：标题 2 级
+RGB_INK = (44, 36, 24)         # 正文墨色
+RGB_INK_3 = (115, 109, 96)     # 次级文字
+RGB_PAPER = (246, 243, 236)    # 纸底
+RGB_LINE = (222, 214, 199)     # 分隔线
 
-def generate_excel(filename, task_requirements, evaluation):
-    """生成含图表的 Excel 评价报告"""
+# Excel-compatible ARGB (no #)
+HEX_SEAL = "FF5A1F"
+HEX_AMBER = "F4B740"
+HEX_JADE = "1DB955"
+HEX_COBALT = "3D5AFE"
+HEX_INK = "2C2418"
+HEX_INK_3 = "736D60"
+HEX_PAPER = "F6F3EC"
+HEX_ZEBRA = "FAF7F0"
+HEX_WHITE = "FFFFFF"
+
+
+def _rgb_to_hex(rgb: tuple) -> str:
+    return "".join(f"{int(v):02X}" for v in rgb)
+
+
+def _score_level(total: float) -> tuple[str, str, str]:
+    """Return (label, PDF color hex tuple, Excel hex) for a score level."""
+    if total >= 90:
+        return "优秀", RGB_SEAL, HEX_SEAL
+    if total >= 80:
+        return "良好", RGB_COBALT, HEX_COBALT
+    if total >= 70:
+        return "中等", RGB_JADE, HEX_JADE
+    if total >= 60:
+        return "及格", RGB_AMBER, HEX_AMBER
+    return "需改进", RGB_INK, HEX_INK_3
+
+
+def _level_star(total: float) -> str:
+    if total >= 95:
+        return "★★★★★"
+    if total >= 85:
+        return "★★★★☆"
+    if total >= 75:
+        return "★★★☆☆"
+    if total >= 65:
+        return "★★☆☆☆"
+    return "★☆☆☆☆"
+
+
+
+def generate_excel(filename, task_requirements, evaluation, student_name="学生"):
+    """生成含美化格式 + 双图（柱状 + 雷达）+ 分 Sheet 的 Excel 评价报告。"""
     _ensure_xlsx()
+    from openpyxl.utils import get_column_letter
+    from openpyxl.chart.series import DataPoint
+    from openpyxl.styles.numbers import FORMAT_PERCENTAGE_00
+
     wb = Workbook()
-    ws = wb.active
-    ws.title = "评价总览"
+    ws1 = wb.active
+    ws1.title = "评价总览"
 
-    thin_border = Border(
-        left=Side(style='thin'), right=Side(style='thin'),
-        top=Side(style='thin'), bottom=Side(style='thin')
+    # --- 边框 / 辅助 ---
+    thin = Side(style='thin', color='BFB59A')
+    medium = Side(style='medium', color='8A7A5B')
+    border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
+    border_header = Border(left=medium, right=medium, top=medium, bottom=medium)
+
+    header_fill = PatternFill(start_color=HEX_COBALT, end_color=HEX_COBALT, fill_type="solid")
+    zebra_fill = PatternFill(start_color=HEX_ZEBRA, end_color=HEX_ZEBRA, fill_type="solid")
+    seal_fill = PatternFill(start_color=HEX_SEAL, end_color=HEX_SEAL, fill_type="solid")
+    amber_fill = PatternFill(start_color=HEX_AMBER + "33", end_color=HEX_AMBER + "33", fill_type="solid")
+    paper_fill = PatternFill(start_color=HEX_PAPER, end_color=HEX_PAPER, fill_type="solid")
+    jade_fill = PatternFill(start_color="D6F5E1", end_color="D6F5E1", fill_type="solid")
+    cobalt_light = PatternFill(start_color="E6EAFF", end_color="E6EAFF", fill_type="solid")
+
+    total = float(evaluation.get("total") or 0)
+    scores = evaluation.get("scores", []) or []
+    level, _, _hex_lvl = _score_level(total)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    report_id = "R" + datetime.now().strftime("%Y%m%d%H%M%S")
+
+    # ---------- Sheet 1: 评价总览 ----------
+    # 整页背景
+    max_col_total = 6
+    for r in range(1, 80):
+        for c in range(1, max_col_total + 1):
+            ws1.cell(row=r, column=c).fill = paper_fill
+
+    # 顶部装饰条（印章红横条 + 琥珀金横条）
+    ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_col_total)
+    c = ws1.cell(row=1, column=1, value="")
+    c.fill = seal_fill
+    ws1.row_dimensions[1].height = 6
+    ws1.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max_col_total)
+    c = ws1.cell(row=2, column=1, value="")
+    c.fill = PatternFill(start_color=HEX_AMBER, end_color=HEX_AMBER, fill_type="solid")
+    ws1.row_dimensions[2].height = 3
+
+    # 标题行（合并）
+    ws1.merge_cells(start_row=3, start_column=1, end_row=4, end_column=max_col_total)
+    tcell = ws1.cell(row=3, column=1, value="  实 训 评 价 报 告")
+    tcell.font = Font(name="微软雅黑", size=22, bold=True, color=HEX_WHITE)
+    tcell.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    tcell.fill = PatternFill(start_color=HEX_COBALT, end_color=HEX_COBALT, fill_type="solid")
+    ws1.row_dimensions[3].height = 22
+    ws1.row_dimensions[4].height = 22
+
+    # 基本信息卡（5-8 行，分 1-3 左列 / 4-6 右列）
+    # 先按左右列分别合并，避免先合并整行造成内部 cell 变成 MergedCell 只读
+    info_rows = [5, 6, 7, 8]
+    for r in info_rows:
+        # 左列 1-3 合并（统一底色）
+        ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
+        ws1.cell(row=r, column=1).fill = PatternFill(start_color="FFF5E6", end_color="FFF5E6", fill_type="solid")
+        # 右列 4-6 合并
+        ws1.merge_cells(start_row=r, start_column=4, end_row=r, end_column=max_col_total)
+        ws1.cell(row=r, column=4).fill = PatternFill(start_color="FFF5E6", end_color="FFF5E6", fill_type="solid")
+        ws1.row_dimensions[r].height = 22
+
+    def _write_merged(ws, row, col, end_col, value, font=None, align=None, fill=None):
+        """安全写入：若单元格已在合并区，就写到合并区左上 cell（合并区 top-left 是唯一可写 cell）。"""
+        from openpyxl.cell.cell import MergedCell
+        target = ws.cell(row=row, column=col)
+        if isinstance(target, MergedCell):
+            # 在已注册的 merged_cell_ranges 里找到包含该 cell 的合并块，取其左上
+            for mcr in ws.merged_cells.ranges:
+                if (mcr.min_row <= row <= mcr.max_row and
+                        mcr.min_col <= col <= mcr.max_col):
+                    target = ws.cell(row=mcr.min_row, column=mcr.min_col)
+                    break
+        target.value = value
+        if font is not None:
+            target.font = font
+        if align is not None:
+            target.alignment = align
+        if fill is not None:
+            target.fill = fill
+        return target
+
+    # 左列（1-3 合并，所以写 col=1 即可）
+    lbl_font = Font(name="微软雅黑", size=11, bold=True, color=HEX_INK)
+    _write_merged(ws1, 5, 1, 3,
+                  f"  学生姓名：{_safe_cn(student_name)}",
+                  font=lbl_font,
+                  align=Alignment(horizontal='left', vertical='center', indent=1))
+    # 学生姓名用钴蓝单独高亮：用同一 cell 替换字体的数字/中文后半段不现实，就直接写成 label+value 一体，末尾值高亮颜色
+    # 简化方案：把整句写到 col=1 合并区，另起 col=4 合并区放颜色高亮的姓名（若要严格保持 label/value 分开色可改；现保持一体化更稳）
+    # 为让 value 高亮，写为两个相邻文本用富文本：
+    from openpyxl.cell.rich_text import TextBlock, CellRichText
+    from openpyxl.cell.text import InlineFont
+    _write_merged(ws1, 5, 1, 3, "", fill=None)  # 清空
+    irl = InlineFont(rFont="微软雅黑", sz=11, b=True, color=HEX_INK)
+    irv = InlineFont(rFont="微软雅黑", sz=12, b=True, color=HEX_COBALT)
+    ws1.cell(row=5, column=1).value = CellRichText(
+        TextBlock(irl, "  学生姓名："),
+        TextBlock(irv, _safe_cn(student_name)),
     )
+    ws1.cell(row=5, column=1).alignment = Alignment(horizontal='left', vertical='center', indent=1)
 
-    # 标题
-    ws.merge_cells('A1:D1')
-    ws['A1'] = "实训评价报告"
-    ws['A1'].font = Font(size=16, bold=True, color="1F4E79")
-    ws['A1'].alignment = Alignment(horizontal='center')
+    _write_merged(ws1, 6, 1, 3, "", fill=None)
+    ir_lvl = InlineFont(rFont="微软雅黑", sz=12, b=True, color=_hex_lvl)
+    ws1.cell(row=6, column=1).value = CellRichText(
+        TextBlock(irl, "  评价等级："),
+        TextBlock(ir_lvl, level),
+    )
+    ws1.cell(row=6, column=1).alignment = Alignment(horizontal='left', vertical='center', indent=1)
 
-    ws.merge_cells('A2:D2')
-    ws['A2'] = f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    ws['A2'].alignment = Alignment(horizontal='center')
+    _write_merged(ws1, 7, 1, 3, "", fill=None)
+    ir_star = InlineFont(rFont="微软雅黑", sz=12, b=True, color=HEX_AMBER)
+    ws1.cell(row=7, column=1).value = CellRichText(
+        TextBlock(irl, "  推荐星级："),
+        TextBlock(ir_star, _level_star(total)),
+    )
+    ws1.cell(row=7, column=1).alignment = Alignment(horizontal='left', vertical='center', indent=1)
 
-    # 总分
-    ws.merge_cells('A4:D4')
-    ws['A4'] = f"综合评分：{evaluation['total']} 分"
-    ws['A4'].font = Font(size=24, bold=True, color="409EFF")
-    ws['A4'].alignment = Alignment(horizontal='center')
+    # 右列（4-6 合并）：报告编号 / 生成时间
+    sm_font = Font(name="微软雅黑", size=10, color=HEX_INK_3)
+    sm_align = Alignment(horizontal='right', vertical='center', indent=1)
+    _write_merged(ws1, 5, 4, max_col_total, f"报告编号：{report_id}", font=sm_font, align=sm_align)
+    _write_merged(ws1, 6, 4, max_col_total, f"生成时间：{now_str}", font=sm_font, align=sm_align)
 
-    level = "优秀" if evaluation['total'] >= 80 else "良好" if evaluation['total'] >= 60 else "需改进"
-    ws.merge_cells('A5:D5')
-    ws['A5'] = f"等级：{level}"
-    ws['A5'].font = Font(size=14)
-    ws['A5'].alignment = Alignment(horizontal='center')
+    # 综合评分 大字卡（合并行 8，1-3 显示评分 4-6 显示满分/占比）
+    ws1.merge_cells(start_row=9, start_column=1, end_row=11, end_column=3)
+    sc = ws1.cell(row=9, column=1, value=f"  {total} 分")
+    sc.font = Font(name="微软雅黑", size=36, bold=True, color=HEX_SEAL)
+    sc.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    sc.fill = PatternFill(start_color="FFF0E6", end_color="FFF0E6", fill_type="solid")
+    ws1.row_dimensions[9].height = 28
+    ws1.row_dimensions[10].height = 28
+    ws1.row_dimensions[11].height = 28
+    # 右侧小指标（达标率、最高维度、最低维度）
+    right_info = [
+        ("达标维度", f"{sum(1 for s in scores if float(s.get('score', 0) or 0) >= 60)} / {len(scores)}", HEX_JADE),
+        ("最高分维度", (max(scores, key=lambda s: float(s.get('score', 0) or 0))['name'] if scores else "-"), HEX_COBALT),
+        ("最低分维度", (min(scores, key=lambda s: float(s.get('score', 0) or 0))['name'] if scores else "-"), HEX_AMBER),
+    ]
+    for i, (lbl, val, hx) in enumerate(right_info):
+        rr = 9 + i
+        ws1.merge_cells(start_row=rr, start_column=4, end_row=rr, end_column=max_col_total)
+        c = ws1.cell(row=rr, column=4, value=f"  {lbl}：  {_safe_cn(val)}")
+        c.font = Font(name="微软雅黑", size=11, bold=True, color=hx)
+        c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        c.fill = PatternFill(start_color="FFFDF6", end_color="FFFDF6", fill_type="solid")
 
-    # 表头
-    for col, val in zip(['A7', 'B7', 'C7', 'D7'], ['评价维度', '得分', '满分', '评分理由']):
-        ws[col] = val
-        ws[col].font = Font(size=12, bold=True, color="FFFFFF")
-        ws[col].fill = PatternFill(start_color="409EFF", end_color="409EFF", fill_type="solid")
-        ws[col].alignment = Alignment(horizontal='center')
-        ws[col].border = thin_border
+    # 空白
+    ws1.cell(row=12, column=1, value="")
+    ws1.row_dimensions[12].height = 8
+
+    # 维度评分表表头（行 13 合并大标题）
+    header_big_row = 13
+    ws1.merge_cells(start_row=header_big_row, start_column=1, end_row=header_big_row, end_column=6)
+    hc = ws1.cell(row=header_big_row, column=1, value="  各维度详细评分")
+    hc.font = Font(name="微软雅黑", size=13, bold=True, color=HEX_WHITE)
+    hc.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    hc.fill = PatternFill(start_color=HEX_COBALT, end_color=HEX_COBALT, fill_type="solid")
+    ws1.row_dimensions[header_big_row].height = 22
+
+    # 列名（行 14）：序号 / 评价维度 / 得分 / 满分 / 得分率 / 评分理由
+    table_start = 14
+    headers = ["序号", "评价维度", "得分", "满分", "得分率", "评分理由"]
+    widths = [6, 22, 10, 10, 12, 55]
+    for i, h in enumerate(headers, 1):
+        cc = ws1.cell(row=table_start, column=i, value=h)
+        cc.font = Font(name="微软雅黑", size=11, bold=True, color=HEX_WHITE)
+        cc.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cc.fill = header_fill
+        cc.border = border_header
+    ws1.row_dimensions[table_start].height = 24
+    for i, w in enumerate(widths, 1):
+        ws1.column_dimensions[get_column_letter(i)].width = w
 
     # 数据行
-    for i, score in enumerate(evaluation['scores']):
-        row = 8 + i
-        ws[f'A{row}'] = score['name']
-        ws[f'B{row}'] = score['score']
-        ws[f'C{row}'] = 100
-        ws[f'D{row}'] = score['reason']
-        for col in ['A', 'B', 'C', 'D']:
-            ws[f'{col}{row}'].border = thin_border
-            ws[f'{col}{row}'].alignment = Alignment(vertical='center', wrap_text=True)
+    for i, s in enumerate(scores, 1):
+        r = table_start + i
+        sc_val = float(s.get("score", 0) or 0)
+        pct = min(1.0, sc_val / 100.0) if sc_val else 0
+        ws1.cell(row=r, column=1, value=i).alignment = Alignment(horizontal='center', vertical='center')
+        ws1.cell(row=r, column=1).font = Font(name="微软雅黑", size=10, color=HEX_INK_3, bold=True)
+        ws1.cell(row=r, column=2, value=_safe_cn(s.get("name", ""))).font = Font(name="微软雅黑", size=11, bold=True, color=HEX_INK)
+        ws1.cell(row=r, column=2).alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        ws1.cell(row=r, column=3, value=sc_val).font = Font(name="微软雅黑", size=12, bold=True, color=(
+            HEX_SEAL if sc_val >= 90 else HEX_COBALT if sc_val >= 80 else HEX_JADE if sc_val >= 70 else HEX_AMBER if sc_val >= 60 else "C62828"
+        ))
+        ws1.cell(row=r, column=3).alignment = Alignment(horizontal='center', vertical='center')
+        ws1.cell(row=r, column=4, value=100).font = Font(name="微软雅黑", size=10, color=HEX_INK_3)
+        ws1.cell(row=r, column=4).alignment = Alignment(horizontal='center', vertical='center')
+        ws1.cell(row=r, column=5, value=pct).number_format = FORMAT_PERCENTAGE_00
+        ws1.cell(row=r, column=5).alignment = Alignment(horizontal='center', vertical='center')
+        ws1.cell(row=r, column=5).font = Font(name="微软雅黑", size=10, bold=True, color=(
+            HEX_JADE if pct >= 0.8 else HEX_AMBER if pct >= 0.6 else "C62828"
+        ))
+        ws1.cell(row=r, column=6, value=_safe_cn(s.get("reason", ""))).font = Font(name="微软雅黑", size=10, color=HEX_INK)
+        ws1.cell(row=r, column=6).alignment = Alignment(horizontal='left', vertical='center', wrap_text=True, indent=1)
 
-    # 柱状图
-    last_row = 8 + len(evaluation['scores']) - 1
-    chart = BarChart()
-    chart.type = "col"
-    chart.title = "各维度评分对比"
-    chart.y_axis.title = "分数"
-    chart.style = 10
-    chart.width = 18
-    chart.height = 12
+        # 边框 + 斑马纹
+        for col in range(1, max_col_total + 1):
+            cell = ws1.cell(row=r, column=col)
+            cell.border = border_all
+            if i % 2 == 0:
+                cell.fill = zebra_fill
 
-    data = Reference(ws, min_col=2, min_row=7, max_row=last_row, max_col=2)
-    cats = Reference(ws, min_col=1, min_row=8, max_row=last_row)
-    chart.add_data(data, titles_from_data=True)
-    chart.set_categories(cats)
+        # 条件底色：<60 琥珀底，≥90 翡翠浅底
+        if sc_val < 60:
+            for col in range(1, max_col_total + 1):
+                ws1.cell(row=r, column=col).fill = amber_fill
+        elif sc_val >= 90:
+            for col in range(1, max_col_total + 1):
+                ws1.cell(row=r, column=col).fill = jade_fill
 
-    ws.add_chart(chart, f"A{last_row + 3}")
+        # 行高自适应（理由字数粗略估算）
+        reason_len = len(s.get("reason", ""))
+        h = max(24, 18 + (reason_len // 30) * 16)
+        ws1.row_dimensions[r].height = h
 
-    # 总评
-    cr = last_row + 20
-    ws.merge_cells(f'A{cr}:D{cr}')
-    ws[f'A{cr}'] = "AI 总评"
-    ws[f'A{cr}'].font = Font(size=12, bold=True)
-    ws.merge_cells(f'A{cr+1}:D{cr+3}')
-    ws[f'A{cr+1}'] = evaluation['comment']
-    ws[f'A{cr+1}'].alignment = Alignment(wrap_text=True, vertical='top')
+    last_data_row = table_start + max(len(scores), 1)
 
-    ws.column_dimensions['A'].width = 20
-    ws.column_dimensions['B'].width = 15
-    ws.column_dimensions['C'].width = 12
-    ws.column_dimensions['D'].width = 45
+    # 合计行（行 last_data_row + 1）
+    sum_row = last_data_row + 1
+    ws1.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=2)
+    cc = ws1.cell(row=sum_row, column=1, value="  合计 / 平均")
+    cc.font = Font(name="微软雅黑", size=11, bold=True, color=HEX_WHITE)
+    cc.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    cc.fill = PatternFill(start_color=HEX_COBALT, end_color=HEX_COBALT, fill_type="solid")
+    avg_sc = round(sum(float(s.get('score', 0) or 0) for s in scores) / len(scores), 1) if scores else 0
+    avg_pct = min(1.0, avg_sc / 100.0) if avg_sc else 0
+    ws1.cell(row=sum_row, column=3, value=avg_sc).font = Font(name="微软雅黑", size=12, bold=True, color=HEX_COBALT)
+    ws1.cell(row=sum_row, column=3).alignment = Alignment(horizontal='center', vertical='center')
+    ws1.cell(row=sum_row, column=4, value=100).font = Font(name="微软雅黑", size=10, color=HEX_INK_3)
+    ws1.cell(row=sum_row, column=4).alignment = Alignment(horizontal='center', vertical='center')
+    ws1.cell(row=sum_row, column=5, value=avg_pct).number_format = FORMAT_PERCENTAGE_00
+    ws1.cell(row=sum_row, column=5).alignment = Alignment(horizontal='center', vertical='center')
+    ws1.cell(row=sum_row, column=5).font = Font(name="微软雅黑", size=10, bold=True, color=HEX_COBALT)
+    ws1.cell(row=sum_row, column=6, value=f"评价等级：{level}").font = Font(name="微软雅黑", size=10, bold=True, color=_hex_lvl)
+    ws1.cell(row=sum_row, column=6).alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    for col in range(1, max_col_total + 1):
+        ws1.cell(row=sum_row, column=col).border = border_header
+    ws1.row_dimensions[sum_row].height = 26
+
+    # 冻结窗格（冻结到表头下方）
+    ws1.freeze_panes = f"A{table_start + 1}"
+
+    # 柱状图（得分）
+    try:
+        chart = BarChart()
+        chart.type = "col"
+        chart.style = 11
+        chart.title = "各维度得分对比"
+        chart.y_axis.title = "分数"
+        chart.y_axis.scaling.min = 0
+        chart.y_axis.scaling.max = 100
+        chart.x_axis.title = "维度"
+        chart.width = 22
+        chart.height = 12
+        data = Reference(ws1, min_col=3, min_row=table_start, max_row=last_data_row, max_col=3)
+        cats = Reference(ws1, min_col=2, min_row=table_start + 1, max_row=last_data_row)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+        # 颜色：印章红柱子，数据标签
+        try:
+            s0 = chart.series[0]
+            s0.graphicalProperties.solidFill = HEX_SEAL
+            s0.graphicalProperties.line.solidFill = HEX_SEAL
+            s0.dataLabels = DataLabelList()
+            s0.dataLabels.showVal = True
+            s0.dataLabels.showCatName = False
+        except Exception:
+            pass
+        chart_anchor_row = sum_row + 3
+        ws1.add_chart(chart, f"A{chart_anchor_row}")
+    except Exception:
+        chart_anchor_row = sum_row + 3
+        pass
+
+    # 雷达图（右侧）
+    try:
+        rc = RadarChart()
+        rc.title = "维度掌握率雷达图"
+        rc.style = 26
+        rc.width = 16
+        rc.height = 13
+        rc.y_axis.scaling.min = 0
+        rc.y_axis.scaling.max = 100
+        rc_data = Reference(ws1, min_col=3, min_row=table_start, max_row=last_data_row, max_col=3)
+        rc_cats = Reference(ws1, min_col=2, min_row=table_start + 1, max_row=last_data_row)
+        rc.add_data(rc_data, titles_from_data=True)
+        rc.set_categories(rc_cats)
+        try:
+            rs = rc.series[0]
+            rs.graphicalProperties.solidFill = HEX_AMBER
+            rs.graphicalProperties.line.solidFill = HEX_COBALT
+        except Exception:
+            pass
+        ws1.add_chart(rc, f"D{chart_anchor_row}")
+    except Exception:
+        pass
+
+    # AI 总评 大卡片
+    comment_anchor = chart_anchor_row + 24
+    ws1.merge_cells(start_row=comment_anchor, start_column=1, end_row=comment_anchor, end_column=max_col_total)
+    cc = ws1.cell(row=comment_anchor, column=1, value="  AI 综合评价")
+    cc.font = Font(name="微软雅黑", size=13, bold=True, color=HEX_WHITE)
+    cc.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    cc.fill = PatternFill(start_color=HEX_JADE, end_color=HEX_JADE, fill_type="solid")
+    ws1.row_dimensions[comment_anchor].height = 24
+    ws1.merge_cells(start_row=comment_anchor + 1, start_column=1, end_row=comment_anchor + 5, end_column=max_col_total)
+    cmt_cell = ws1.cell(row=comment_anchor + 1, column=1, value=_safe_cn(evaluation.get("comment", "")))
+    cmt_cell.font = Font(name="微软雅黑", size=11, color=HEX_INK)
+    cmt_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True, indent=2)
+    cmt_cell.fill = PatternFill(start_color="EAFBF1", end_color="EAFBF1", fill_type="solid")
+    cmt_cell.border = border_all
+    for rr in range(comment_anchor + 1, comment_anchor + 6):
+        ws1.row_dimensions[rr].height = 22
+
+    # 实训要求 卡片
+    req_anchor = comment_anchor + 7
+    ws1.merge_cells(start_row=req_anchor, start_column=1, end_row=req_anchor, end_column=max_col_total)
+    cc = ws1.cell(row=req_anchor, column=1, value="  实训任务要求")
+    cc.font = Font(name="微软雅黑", size=13, bold=True, color=HEX_WHITE)
+    cc.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    cc.fill = PatternFill(start_color=HEX_AMBER, end_color=HEX_AMBER, fill_type="solid")
+    ws1.row_dimensions[req_anchor].height = 24
+    ws1.merge_cells(start_row=req_anchor + 1, start_column=1, end_row=req_anchor + 5, end_column=max_col_total)
+    req_cell = ws1.cell(row=req_anchor + 1, column=1, value=_safe_cn(task_requirements))
+    req_cell.font = Font(name="微软雅黑", size=11, color=HEX_INK)
+    req_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True, indent=2)
+    req_cell.fill = PatternFill(start_color="FFF9EC", end_color="FFF9EC", fill_type="solid")
+    req_cell.border = border_all
+    for rr in range(req_anchor + 1, req_anchor + 6):
+        ws1.row_dimensions[rr].height = 22
+
+    # ---------- Sheet 2: 维度明细（长文） ----------
+    ws2 = wb.create_sheet("维度明细")
+    for r in range(1, 500):
+        for c in range(1, 4):
+            ws2.cell(row=r, column=c).fill = paper_fill
+    ws2.column_dimensions['A'].width = 24
+    ws2.column_dimensions['B'].width = 12
+    ws2.column_dimensions['C'].width = 100
+
+    # 顶部装饰
+    ws2.merge_cells('A1:C1')
+    ws2['A1'].fill = seal_fill
+    ws2.row_dimensions[1].height = 6
+    ws2.merge_cells('A2:C2')
+    ws2['A2'].fill = PatternFill(start_color=HEX_COBALT, end_color=HEX_COBALT, fill_type="solid")
+    ws2['A2'].value = "  各维度评分理由（详细版）"
+    ws2['A2'].font = Font(name="微软雅黑", size=14, bold=True, color=HEX_WHITE)
+    ws2.row_dimensions[2].height = 28
+
+    # 表头
+    h2 = ["评价维度", "得分", "评分理由（详细）"]
+    for i, h in enumerate(h2, 1):
+        cc = ws2.cell(row=3, column=i, value=h)
+        cc.font = Font(name="微软雅黑", size=12, bold=True, color=HEX_WHITE)
+        cc.fill = header_fill
+        cc.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cc.border = border_header
+    ws2.row_dimensions[3].height = 24
+    ws2.freeze_panes = "A4"
+
+    for i, s in enumerate(scores, 1):
+        r = 3 + i
+        sc_val = float(s.get('score', 0) or 0)
+        ws2.cell(row=r, column=1, value=_safe_cn(s.get("name", ""))).font = Font(name="微软雅黑", size=11, bold=True, color=HEX_INK)
+        ws2.cell(row=r, column=1).alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        ws2.cell(row=r, column=2, value=sc_val).font = Font(name="微软雅黑", size=12, bold=True, color=(
+            HEX_SEAL if sc_val >= 90 else HEX_COBALT if sc_val >= 80 else HEX_JADE if sc_val >= 70 else HEX_AMBER if sc_val >= 60 else "C62828"
+        ))
+        ws2.cell(row=r, column=2).alignment = Alignment(horizontal='center', vertical='center')
+        ws2.cell(row=r, column=3, value=_safe_cn(s.get("reason", ""))).font = Font(name="微软雅黑", size=10.5, color=HEX_INK)
+        ws2.cell(row=r, column=3).alignment = Alignment(horizontal='left', vertical='top', wrap_text=True, indent=1)
+        for col in range(1, 4):
+            ws2.cell(row=r, column=col).border = border_all
+            if i % 2 == 0:
+                ws2.cell(row=r, column=col).fill = zebra_fill
+        # 行高估算
+        lines = max(4, (len(s.get("reason", "")) // 55) + 2)
+        ws2.row_dimensions[r].height = 16 * lines
 
     filepath = os.path.join(REPORT_DIR, filename)
     wb.save(filepath)
@@ -422,70 +780,439 @@ def generate_word(filename, task_requirements, evaluation, student_name="学生"
 
 
 def generate_pdf(filename, task_requirements, evaluation, student_name="学生"):
+    """生成排版精美的 PDF 实训评价报告：封面 + KPI 卡 + 图表 + 表格 + 总评。"""
     _ensure_fpdf()
     pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=18)
+    fn, fnb = _register_cn_fonts(pdf)
+    tmp_files: list[str] = []
     pdf.add_page()
-
-    # 注册中文字体
-    font_path = "C:/Windows/Fonts/simsun.ttc"
-    if not os.path.exists(font_path):
-        font_path = "C:/Windows/Fonts/msyh.ttc"
-    if not os.path.exists(font_path):
-        font_path = "C:/Windows/Fonts/simhei.ttf"
-
-    pdf.add_font("CN", "", font_path, uni=True)
-    pdf.add_font("CN", "B", font_path, uni=True)
-
     filepath = os.path.join(REPORT_DIR, filename)
 
-    # 标题
-    pdf.set_font("CN", "B", 22)
-    pdf.cell(0, 15, "实训评价报告", align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(5)
+    total = float(evaluation.get("total") or 0)
+    scores = evaluation.get("scores", []) or []
+    level, lvl_rgb, _ = _score_level(total)
+    star = _level_star(total)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    report_id = "R" + datetime.now().strftime("%Y%m%d%H%M%S")
+    n_pass = sum(1 for s in scores if float(s.get("score", 0) or 0) >= 60)
+    n_total = len(scores) or 1
+    best = max(scores, key=lambda s: float(s.get("score", 0) or 0)) if scores else None
+    worst = min(scores, key=lambda s: float(s.get("score", 0) or 0)) if scores else None
 
-    # 基本信息
-    pdf.set_font("CN", "", 11)
-    pdf.cell(0, 8, f"学生：{student_name}    生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}", align="C",
+    # ---- 顶部装饰条：印章红 + 琥珀金 ----
+    pdf.set_fill_color(*RGB_SEAL)
+    pdf.rect(pdf.l_margin, 10, pdf.epw, 4, "F")
+    pdf.set_fill_color(*RGB_AMBER)
+    pdf.rect(pdf.l_margin, 14, pdf.epw, 2, "F")
+    # 左竖装饰
+    pdf.set_fill_color(*RGB_COBALT)
+    pdf.rect(pdf.l_margin + 2, 22, 3, 40, "F")
+
+    # 副标题
+    pdf.set_xy(pdf.l_margin + 10, 24)
+    pdf.set_font(fn, "B", 11)
+    pdf.set_text_color(*RGB_COBALT)
+    pdf.cell(0, 7, "ZHI XUN YUN  ·  知 训 云  ·  实 训 评 价 体 系",
              new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # 大标题
+    pdf.set_x(pdf.l_margin + 10)
+    pdf.set_font(fn, "B", 30)
+    pdf.set_text_color(*RGB_INK)
+    pdf.cell(0, 18, "实 训 评 价 报 告", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    # 基本信息表（双列）
+    info_rows = [
+        ("学生姓名", _safe_cn(student_name, 20), "报告编号", report_id),
+        ("评价等级", f"{level}  {star}", "生成时间", now_str),
+    ]
+    col1x = pdf.l_margin + 10
+    col2x = pdf.l_margin + pdf.epw / 2 + 10
+    lbl_w = 26
+    val_w = pdf.epw / 2 - lbl_w - 12
+    for r, (l1, v1, l2, v2) in enumerate(info_rows):
+        y = pdf.get_y()
+        # 左列
+        pdf.set_xy(col1x, y)
+        pdf.set_font(fn, "", 10)
+        pdf.set_text_color(*RGB_INK_3)
+        pdf.cell(lbl_w, 8, f"{l1}：", new_x="RIGHT", new_y="TOP")
+        pdf.set_font(fnb, "", 12)
+        pdf.set_text_color(*RGB_INK)
+        if l1 == "评价等级":
+            pdf.set_text_color(*lvl_rgb)
+        pdf.cell(val_w, 8, _safe_cn(str(v1), 34), new_x="RIGHT", new_y="TOP")
+        # 右列
+        pdf.set_xy(col2x, y)
+        pdf.set_font(fn, "", 10)
+        pdf.set_text_color(*RGB_INK_3)
+        pdf.cell(lbl_w, 8, f"{l2}：", new_x="RIGHT", new_y="TOP")
+        pdf.set_font(fn, "", 10.5)
+        pdf.set_text_color(*RGB_INK_3 if l2 != "评价等级" else RGB_INK)
+        pdf.cell(val_w, 8, _safe_cn(str(v2), 34), new_x="RIGHT", new_y="TOP")
+        pdf.set_y(y + 9)
+    pdf.ln(4)
+
+    # ---- 综合评分 大字卡 ----
+    score_x1 = pdf.l_margin + 4
+    score_y = pdf.get_y()
+    # 底框（印章红渐变模拟：印章红大框 + 琥珀金竖条）
+    pdf.set_fill_color(255, 244, 236)
+    pdf.rect(score_x1, score_y, pdf.epw - 8, 38, "F")
+    pdf.set_fill_color(*RGB_SEAL)
+    pdf.rect(score_x1, score_y, 5, 38, "F")
+    pdf.set_fill_color(*RGB_AMBER)
+    pdf.rect(score_x1, score_y + 32, pdf.epw - 8, 6, "F")
+
+    # 分数大字
+    pdf.set_xy(score_x1 + 14, score_y + 3)
+    pdf.set_font(fnb, "", 40)
+    pdf.set_text_color(*RGB_SEAL)
+    pdf.cell(60, 20, f"{total}", new_x="RIGHT", new_y="TOP")
+    pdf.set_font(fn, "", 14)
+    pdf.set_text_color(*RGB_SEAL)
+    pdf.cell(14, 20, "分", new_x="RIGHT", new_y="TOP")
+    # 等级 + 星级
+    pdf.set_xy(score_x1 + 14, score_y + 24)
+    pdf.set_font(fnb, "", 12)
+    pdf.set_text_color(*lvl_rgb)
+    pdf.cell(60, 10, f"等级：{level}    {star}", new_x="RIGHT", new_y="TOP")
+
+    # 右侧 3 个小 KPI 条（达标维度 / 最高分维度 / 最低分维度）
+    right_kpis = [
+        ("达标维度", f"{n_pass} / {n_total}", RGB_JADE),
+        ("最高维度", _safe_cn(best["name"], 10) if best else "-",
+         RGB_COBALT),
+        ("最低维度", _safe_cn(worst["name"], 10) if worst else "-",
+         RGB_AMBER),
+    ]
+    right_x = pdf.l_margin + pdf.epw / 2 + 14
+    right_w = pdf.epw / 2 - 24
+    for i, (k, v, col) in enumerate(right_kpis):
+        ky = score_y + 4 + i * 11
+        # 左侧色标
+        pdf.set_fill_color(*col)
+        pdf.rect(right_x, ky, 3.5, 9, "F")
+        pdf.set_xy(right_x + 6, ky)
+        pdf.set_font(fn, "", 9.5)
+        pdf.set_text_color(*RGB_INK_3)
+        pdf.cell(20, 9, f"{k}：", new_x="RIGHT", new_y="TOP")
+        pdf.set_font(fnb, "", 10.5)
+        pdf.set_text_color(*col)
+        pdf.cell(right_w - 26, 9, _safe_cn(str(v), 26), new_x="RIGHT", new_y="TOP")
+    pdf.set_y(score_y + 46)
+
+    # ---- 章节一：核心指标概览（4 KPI 卡 绝对 X） ----
+    pdf.set_font(fnb, "", 14)
+    pdf.set_text_color(*RGB_INK)
+    pdf.cell(0, 10, "一 、 核 心 指 标 概 览", new_x="LMARGIN", new_y="NEXT")
+    # 章节分割线
+    y = pdf.get_y()
+    pdf.set_draw_color(*RGB_COBALT)
+    pdf.set_line_width(0.6)
+    pdf.line(pdf.l_margin, y + 2, pdf.l_margin + pdf.epw, y + 2)
     pdf.ln(8)
 
-    # 总分
-    pdf.set_font("CN", "B", 48)
-    pdf.cell(0, 20, f"{evaluation['total']}分", align="C", new_x="LMARGIN", new_y="NEXT")
+    lm = pdf.l_margin
+    epw = pdf.epw
+    col_w = epw / 4
+    card_top = pdf.get_y()
+    kpi_cards = [
+        ("综 合 评 分", f"{total}", "分", RGB_SEAL),
+        ("达 标 维 度", f"{n_pass}", f"/{n_total}", RGB_COBALT),
+        ("维 度 均 分", f"{round(sum(float(s.get('score',0) or 0) for s in scores)/n_total, 1)}", "分", RGB_JADE),
+        ("评 价 等 级", level, "", lvl_rgb),
+    ]
+    for i, (k, v, u, col) in enumerate(kpi_cards):
+        cx = lm + i * col_w
+        # 背景
+        pdf.set_fill_color(*col)
+        pdf.set_xy(cx, card_top)
+        pdf.cell(col_w, 40, "", border=0, fill=True, new_x="RIGHT", new_y="TOP")
+        # 数字
+        pdf.set_xy(cx, card_top + 7)
+        pdf.set_font(fnb, "", 20)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(col_w, 14, f"{v}{u}", align="C", new_x="RIGHT", new_y="TOP")
+        # 标签
+        pdf.set_xy(cx, card_top + 25)
+        pdf.set_font(fn, "", 10)
+        pdf.set_text_color(255, 245, 238)
+        pdf.cell(col_w, 9, _safe_cn(k), align="C", new_x="RIGHT", new_y="TOP")
+    pdf.set_y(card_top + 50)
 
-    level = "优秀" if evaluation['total'] >= 80 else "良好" if evaluation['total'] >= 60 else "需改进"
-    pdf.set_font("CN", "B", 16)
-    pdf.cell(0, 12, level, align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(10)
+    # ---- 图表：维度得分双图 ----
+    # 横向柱状 + 雷达（雷达放右侧）
+    bar_png = None
+    radar_png = None
+    if scores:
+        dims = {_safe_cn(s["name"], 12): float(s.get("score", 0) or 0) for s in scores}
+        bar_png = _mpl_bar(
+            dims, title="各维度得分对比（横向）", xlabel="分数",
+            horizontal=True, color="#FF5A1F")
+        radar_png = _mpl_radar(dims, title="维度掌握雷达图")
 
-    # 各维度评分
-    pdf.set_font("CN", "B", 14)
-    pdf.cell(0, 10, "各维度详细评分", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(5)
+    left_w = 100
+    right_w = 80
+    gy = pdf.get_y()
+    need_page = False
+    if bar_png and pdf.get_y() + 70 > pdf.h - pdf.b_margin:
+        pdf.add_page()
+        need_page = True
+    if not need_page:
+        pdf.set_font(fnb, "", 13)
+        pdf.set_text_color(*RGB_INK)
+        pdf.cell(0, 10, "二 、 维 度 得 分 图 表", new_x="LMARGIN", new_y="NEXT")
+        y = pdf.get_y()
+        pdf.set_draw_color(*RGB_COBALT)
+        pdf.line(pdf.l_margin, y + 2, pdf.l_margin + pdf.epw, y + 2)
+        pdf.ln(6)
 
-    for s in evaluation.get("scores", []):
-        pdf.set_font("CN", "B", 12)
-        pdf.cell(0, 8, f"{s['name']}：{s['score']}分", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("CN", "", 10)
-        pdf.multi_cell(0, 6, s.get("reason", ""))
-        pdf.ln(3)
+    gx = pdf.l_margin
+    gy = pdf.get_y()
+    # 左：柱状
+    if bar_png:
+        _pdf_add_image_if(pdf, bar_png, w=left_w, h=60, cleanup_paths=tmp_files)
+    # 右：雷达
+    if radar_png:
+        pdf.set_xy(gx + left_w + 5, gy)
+        _pdf_add_image_if(pdf, radar_png, w=right_w, h=60, cleanup_paths=tmp_files)
+    pdf.set_y(gy + 68)
 
-    # 总评
+    # ---- 章节三：维度详细评分表格（支持跨页） ----
+    def _section_header(title: str):
+        pdf.ln(4)
+        if pdf.get_y() + 18 > pdf.h - pdf.b_margin:
+            pdf.add_page()
+        pdf.set_font(fnb, "", 13)
+        pdf.set_text_color(*RGB_INK)
+        pdf.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT")
+        y = pdf.get_y()
+        pdf.set_draw_color(*RGB_COBALT)
+        pdf.set_line_width(0.6)
+        pdf.line(pdf.l_margin, y + 2, pdf.l_margin + pdf.epw, y + 2)
+        pdf.ln(6)
+
+    _section_header("三 、 各 维 度 详 细 评 分 表")
+
+    # 表头
+    col_widths = [12, 42, 18, 18, 24, epw - 12 - 42 - 18 - 18 - 24]  # 114 total by epw
+    # 重新按比例计算 epw
+    cw = [10, 38, 16, 14, 20, epw - 10 - 38 - 16 - 14 - 20]
+    headers = ["#", "评价维度", "得分", "满分", "得分率", "评分理由"]
+    # 表头行
+    y0 = pdf.get_y()
+    # 如果表头放不下开新页
+    if y0 + 10 > pdf.h - pdf.b_margin:
+        pdf.add_page()
+        y0 = pdf.get_y()
+    # 表头填充
+    pdf.set_fill_color(*RGB_COBALT)
+    x0 = pdf.l_margin
+    pdf.set_xy(x0, y0)
+    for i, h in enumerate(headers):
+        pdf.cell(cw[i], 10, _safe_cn(h), border=0, fill=True,
+                 align="C", new_x="RIGHT", new_y="TOP")
+    pdf.set_font(fnb, "", 10)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_xy(x0, y0)
+    for i, h in enumerate(headers):
+        pdf.cell(cw[i], 10, _safe_cn(h), border=0, fill=False,
+                 align="C", new_x="RIGHT", new_y="TOP")
+    pdf.set_y(y0 + 10)
+
+    # 数据行
+    for i, s in enumerate(scores, 1):
+        sc_val = float(s.get("score", 0) or 0)
+        pct = f"{int(min(100, sc_val))}%"
+        reason = _safe_cn(s.get("reason", ""), 200)
+        # 按理由字数估算高度
+        n_lines_reason = max(2, len(reason) // 42 + 1)
+        row_h = max(14, n_lines_reason * 6 + 4)
+        # 跨页判断
+        if pdf.get_y() + row_h + 4 > pdf.h - pdf.b_margin:
+            # 重复表头
+            pdf.add_page()
+            y0 = pdf.get_y()
+            pdf.set_fill_color(*RGB_COBALT)
+            pdf.set_xy(x0, y0)
+            for j, h in enumerate(headers):
+                pdf.cell(cw[j], 10, _safe_cn(h), border=0, fill=True,
+                         align="C", new_x="RIGHT", new_y="TOP")
+            pdf.set_font(fnb, "", 10)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_xy(x0, y0)
+            for j, h in enumerate(headers):
+                pdf.cell(cw[j], 10, _safe_cn(h), border=0, fill=False,
+                         align="C", new_x="RIGHT", new_y="TOP")
+            pdf.set_y(y0 + 10)
+
+        ry = pdf.get_y()
+        # 斑马 / 条件底色
+        is_zebra = i % 2 == 0
+        cond = "none"
+        if sc_val < 60:
+            cond = "amber"
+        elif sc_val >= 90:
+            cond = "jade"
+        # 绘制空背景行
+        if cond == "amber":
+            pdf.set_fill_color(255, 243, 220)
+        elif cond == "jade":
+            pdf.set_fill_color(220, 248, 232)
+        elif is_zebra:
+            pdf.set_fill_color(250, 247, 240)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        pdf.set_xy(x0, ry)
+        pdf.cell(epw, row_h, "", border=0, fill=True, new_x="RIGHT", new_y="TOP")
+
+        # 边框线（上下横线）
+        pdf.set_draw_color(*RGB_LINE)
+        pdf.set_line_width(0.2)
+        pdf.line(x0, ry, x0 + epw, ry)
+        pdf.line(x0, ry + row_h, x0 + epw, ry + row_h)
+
+        # 序号
+        pdf.set_xy(x0, ry)
+        pdf.set_font(fn, "", 9.5)
+        pdf.set_text_color(*RGB_INK_3)
+        pdf.cell(cw[0], row_h, f"  {i}", align="L", new_x="RIGHT", new_y="TOP")
+        # 维度名
+        pdf.set_xy(x0 + cw[0], ry)
+        pdf.set_font(fnb, "", 10.5)
+        pdf.set_text_color(*RGB_INK)
+        pdf.cell(cw[1], row_h, "  " + _safe_cn(s.get("name", ""), 16), align="L", new_x="RIGHT", new_y="TOP")
+        # 得分（分级着色）
+        sc_color = (
+            RGB_SEAL if sc_val >= 90 else RGB_COBALT if sc_val >= 80
+            else RGB_JADE if sc_val >= 70 else RGB_AMBER if sc_val >= 60 else (198, 40, 40)
+        )
+        pdf.set_xy(x0 + cw[0] + cw[1], ry)
+        pdf.set_font(fnb, "", 12)
+        pdf.set_text_color(*sc_color)
+        pdf.cell(cw[2], row_h, f"{sc_val}", align="C", new_x="RIGHT", new_y="TOP")
+        # 满分
+        pdf.set_xy(x0 + cw[0] + cw[1] + cw[2], ry)
+        pdf.set_font(fn, "", 10)
+        pdf.set_text_color(*RGB_INK_3)
+        pdf.cell(cw[3], row_h, "100", align="C", new_x="RIGHT", new_y="TOP")
+        # 得分率
+        pct_col = (
+            RGB_JADE if sc_val >= 80 else RGB_AMBER if sc_val >= 60 else (198, 40, 40)
+        )
+        pdf.set_xy(x0 + cw[0] + cw[1] + cw[2] + cw[3], ry)
+        pdf.set_font(fnb, "", 10)
+        pdf.set_text_color(*pct_col)
+        pdf.cell(cw[4], row_h, pct, align="C", new_x="RIGHT", new_y="TOP")
+        # 评分理由（multi_cell 行内绘制，先移到该格位置）
+        rx = x0 + cw[0] + cw[1] + cw[2] + cw[3] + cw[4]
+        rw = cw[5]
+        pdf.set_xy(rx, ry + 2)
+        pdf.set_font(fn, "", 9.5)
+        pdf.set_text_color(*RGB_INK)
+        pdf.multi_cell(rw, 5.5, reason, border=0, align="L", new_x="RIGHT", new_y="NEXT")
+
+        pdf.set_y(ry + row_h)
+
+    pdf.ln(4)
+
+    # ---- 章节四：AI 综合评价 ----
+    _section_header("四 、 AI 综 合 评 价")
+    y = pdf.get_y()
+    # 翡翠底卡片
+    pdf.set_fill_color(234, 251, 241)
+    pdf.rect(pdf.l_margin, y, epw, 6, "F")
+    pdf.set_fill_color(*RGB_JADE)
+    pdf.rect(pdf.l_margin, y, 4, 6, "F")
+    pdf.ln(2)
+    # 卡片正文
+    y = pdf.get_y()
+    pdf.set_fill_color(246, 253, 248)
+    # 预估需要高度
+    comment = _safe_cn(evaluation.get("comment", ""), 2000)
+    est_h = max(36, (len(comment) // 66 + 2) * 7 + 10)
+    if y + est_h + 10 > pdf.h - pdf.b_margin:
+        pdf.add_page()
+        y = pdf.get_y()
+    pdf.set_fill_color(246, 253, 248)
+    pdf.rect(pdf.l_margin, y, epw, est_h, "F")
+    pdf.set_draw_color(*RGB_JADE)
+    pdf.set_line_width(0.5)
+    pdf.rect(pdf.l_margin, y, epw, est_h, "D")
+    pdf.set_xy(pdf.l_margin + 8, y + 6)
+    pdf.set_font(fnb, "", 11.5)
+    pdf.set_text_color(*RGB_JADE)
+    pdf.cell(0, 7, "▎ 综合评语", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    pdf.set_x(pdf.l_margin + 10)
+    pdf.set_font(fn, "", 11)
+    pdf.set_text_color(*RGB_INK)
+    pdf.multi_cell(epw - 20, 6.5, comment, align="L")
+    pdf.set_y(y + est_h + 2)
+
+    # ---- 章节五：实训要求 ----
+    _section_header("五 、 实 训 任 务 要 求")
+    y = pdf.get_y()
+    pdf.set_fill_color(255, 249, 236)
+    pdf.rect(pdf.l_margin, y, epw, 6, "F")
+    pdf.set_fill_color(*RGB_AMBER)
+    pdf.rect(pdf.l_margin, y, 4, 6, "F")
+    pdf.ln(2)
+    y = pdf.get_y()
+    req = _safe_cn(task_requirements, 5000)
+    est_h = max(40, (len(req) // 66 + 2) * 6.5 + 10)
+    if y + est_h + 10 > pdf.h - pdf.b_margin:
+        pdf.add_page()
+        y = pdf.get_y()
+    pdf.set_fill_color(255, 251, 242)
+    pdf.rect(pdf.l_margin, y, epw, est_h, "F")
+    pdf.set_draw_color(*RGB_AMBER)
+    pdf.set_line_width(0.5)
+    pdf.rect(pdf.l_margin, y, epw, est_h, "D")
+    pdf.set_xy(pdf.l_margin + 8, y + 6)
+    pdf.set_font(fnb, "", 11.5)
+    pdf.set_text_color(*RGB_AMBER)
+    pdf.cell(0, 7, "▎ 任务说明", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    pdf.set_x(pdf.l_margin + 10)
+    pdf.set_font(fn, "", 10.5)
+    pdf.set_text_color(*RGB_INK)
+    pdf.multi_cell(epw - 20, 6, req, align="L")
+    pdf.set_y(y + est_h + 4)
+
+    # ---- 章末：导师签字 + 时间页脚 ----
+    pdf.ln(6)
+    if pdf.get_y() + 50 > pdf.h - pdf.b_margin:
+        pdf.add_page()
+    sign_y = pdf.get_y()
+    pdf.set_draw_color(*RGB_LINE)
+    pdf.set_line_width(0.3)
+    # 左：导师签字
+    pdf.set_font(fn, "", 10.5)
+    pdf.set_text_color(*RGB_INK_3)
+    pdf.set_xy(pdf.l_margin, sign_y + 24)
+    pdf.line(pdf.l_margin + 20, sign_y + 22, pdf.l_margin + 70, sign_y + 22)
+    pdf.cell(0, 8, "导 师 签 字 / Teacher：                  日 期 / Date：            ",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + epw, pdf.get_y())
     pdf.ln(3)
-    pdf.set_font("CN", "B", 14)
-    pdf.cell(0, 10, "AI 综合评价", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(5)
-    pdf.set_font("CN", "", 11)
-    pdf.multi_cell(0, 7, evaluation.get("comment", ""))
+    pdf.set_font(fn, "", 9)
+    pdf.set_text_color(*RGB_INK_3)
+    pdf.cell(0, 5,
+             f"  ZHI XUN YUN · 知训云智能实训评价平台     报告编号：{report_id}     生成时间：{now_str}     本报告由系统自动生成 · 未经授权不得外传",
+             align="C", new_x="LMARGIN", new_y="NEXT")
 
-    # 实训要求
-    pdf.ln(5)
-    pdf.set_font("CN", "B", 14)
-    pdf.cell(0, 10, "实训要求", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(5)
-    pdf.set_font("CN", "", 10)
-    pdf.multi_cell(0, 6, task_requirements)
-
+    # 清理临时图
+    for p in tmp_files:
+        try:
+            os.unlink(p)
+        except Exception:
+            pass
     pdf.output(filepath)
     return filepath
 

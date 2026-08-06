@@ -493,9 +493,6 @@
           <section class="stu-match mb-10">
             <div class="match-head">
               <div class="match-head__left">
-                <div class="match-head__icon">
-                  <Icon icon="mdi:briefcase-star-outline" class="text-3xl" />
-                </div>
                 <div>
                   <div class="flex items-center gap-3 mb-1">
                     <h2 class="match-head__title">AI 岗位匹配</h2>
@@ -590,7 +587,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import axios from 'axios'
+import api from '../api'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
 
@@ -710,7 +707,7 @@ const selectedCourseLabel = computed<{ label: string; isPlaceholder: boolean }>(
 
 const loadCourses = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/courses`)
+    const res = await api.get(`/api/statistics/courses`)
     if (res.data.success) courseList.value = res.data.data
   } catch {}
 }
@@ -723,7 +720,7 @@ const loadTeachingAdvice = async () => {
   adviceLoading.value = true
   const params = selectedClassId.value > 0 ? `?class_id=${selectedClassId.value}` : ''
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/teaching-advice${params}`)
+    const res = await api.get(`/api/statistics/teaching-advice${params}`)
     if (res.data.success) teachingAdvice.value = res.data.data
   } catch {} finally { adviceLoading.value = false }
 }
@@ -749,7 +746,7 @@ onMounted(async () => {
 const loadClasses = async () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   try {
-    const res = await axios.get(`${API_BASE}/api/classes/?teacher_id=${user.id}`)
+    const res = await api.get(`/api/classes/?teacher_id=${user.id}`)
     if (res.data.success) myClasses.value = res.data.data
   } catch {}
 }
@@ -757,13 +754,13 @@ const loadClasses = async () => {
 const loadClassCompare = async () => {
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
-    const res = await axios.get(`${API_BASE}/api/classes/?teacher_id=${user.id}`)
+    const res = await api.get(`/api/classes/?teacher_id=${user.id}`)
     if (!res.data.success) return
     const classes = res.data.data
     const result = []
     for (const c of classes) {
       try {
-        const sRes = await axios.get(`${API_BASE}/api/statistics/class/${c.id}`)
+        const sRes = await api.get(`/api/statistics/class/${c.id}`)
         if (sRes.data.success) {
           result.push({
             name: c.name,
@@ -791,10 +788,10 @@ const onClassChange = async (val: number) => {
 
   try {
     const [res1, res2, res3, res4] = await Promise.all([
-      axios.get(`${API_BASE}/api/statistics/overview${params}`),
-      axios.get(`${API_BASE}/api/statistics/score-distribution${params}`),
-      axios.get(`${API_BASE}/api/statistics/trend${params}`),
-      axios.get(`${API_BASE}/api/statistics/dimension-avg${params}`)
+      api.get(`/api/statistics/overview${params}`),
+      api.get(`/api/statistics/score-distribution${params}`),
+      api.get(`/api/statistics/trend${params}`),
+      api.get(`/api/statistics/dimension-avg${params}`)
     ])
     overview.value = res1.data.data
     distribution.value = res2.data.data
@@ -806,7 +803,7 @@ const onClassChange = async (val: number) => {
 const loadStudentStats = async () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/student/${user.id}`)
+    const res = await api.get(`/api/statistics/student/${user.id}`)
     if (res.data.success) {
       const d = res.data.data
       myStats.value = {
@@ -837,7 +834,7 @@ const loadJobMatch = async () => {
   jobMatchLoading.value = true
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   try {
-    const res = await axios.get(`${API_BASE}/api/statistics/job-match/${user.id}`)
+    const res = await api.get(`/api/statistics/job-match/${user.id}`)
     if (res.data.success) jobMatch.value = res.data.data
   } catch {} finally { jobMatchLoading.value = false }
 }
@@ -2303,20 +2300,6 @@ const studentRadarOption = computed(() => {
   align-items: center;
   gap: 18px;
   min-width: 0;
-}
-.match-head__icon {
-  width: 60px; height: 60px;
-  border-radius: 20px;
-  background:
-    linear-gradient(135deg, var(--cobalt) 0%, var(--seal) 100%);
-  color: #FFFFFF;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow:
-    0 0 0 3px rgba(255, 255, 255, 0.9) inset,
-    0 16px 32px -14px rgba(61, 90, 254, 0.5);
 }
 .match-head__title {
   margin: 0;
