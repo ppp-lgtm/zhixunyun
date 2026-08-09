@@ -1,46 +1,78 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import Optional
 from app.models.database import SessionLocal
-from app.models.tables import Task, Submission, Evaluation
+from app.models.tables import Task, Submission, Evaluation, Teacher, Student, LoginAccount
 from app.models.class_models import Class, ClassMember
+from app.utils.auth_deps import get_db, get_current_user, get_student_pk, get_teacher_id
 
 router = APIRouter(prefix="/api/notifications", tags=["消息通知"])
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# ============================================================
+# ID 转换辅助函数
+# ============================================================
+
+def _account_to_student_pk(db: Session, account_id: int) -> Optional[int]:
+    if not account_id or account_id <= 0:
+        return None
+    row = db.query(Student).filter(Student.account_id == int(account_id)).first()
+    return row.id if row else None
+
+
+def _account_to_teacher_pk(db: Session, account_id: int) -> Optional[int]:
+    if not account_id or account_id <= 0:
+        return None
+    row = db.query(Teacher).filter(Teacher.account_id == int(account_id)).first()
+    return row.id if row else None
 
 
 class MarkReadRequest(BaseModel):
-    notification_type: str  # 'submission' 或 'evaluation'
+    notification_type: str
 
 
 @router.get("/student/{student_id}")
-def student_notifications(student_id: int, db: Session = Depends(get_db)):
-    """学生消息：教师评分 + 新任务发布"""
-    members = db.query(ClassMember).filter(ClassMember.student_id == student_id).all()
+def student_notifications(
+    student_id: int,
+    read_since: Optional[int] = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 学生只能查看自己的通知
+    if user.role == "student" and int(user.id) != int(student_id):
+        raise HTTPException(status_code=403, detail="只能查看自己的通知")
+    from datetime import datetime, timedelta
+    student_pk = _account_to_student_pk(db, student_id)
+    if not student_pk:
+        return {
+            "success": True,
+            "data": {
+                "notifications": [],
+                "total_unread": 0
+            }
+        }
+
+    members = db.query(ClassMember).filter(ClassMember.student_id == student_pk).all()
     class_ids = [m.class_id for m in members]
 
     notifications = []
     total_unread = 0
 
+    read_threshold = datetime.fromtimestamp(read_since / 1000) if read_since and read_since > 0 else datetime.fromtimestamp(0)
+
     if class_ids:
-        # 教师评分通知
-        teacher_evals = db.query(Evaluation.submission_id, Submission.filename, Evaluation.total_score).join(
+        teacher_evals = db.query(Evaluation.submission_id, Submission.filename, Evaluation.total_score, Evaluation.created_at).join(
             Submission, Evaluation.submission_id == Submission.id
         ).filter(
-            Submission.student_id == student_id,
-            Evaluation.evaluator_type == "teacher"
+            Submission.student_id == student_pk,
+            Evaluation.evaluator_type == "teacher",
+            Evaluation.created_at > read_threshold
         ).all()
 
         evaluated_ids = [e.submission_id for e in teacher_evals]
 
-        all_submissions = db.query(Submission.id).filter(Submission.student_id == student_id).all()
+        all_submissions = db.query(Submission.id).filter(Submission.student_id == student_pk).all()
         all_ids = [s.id for s in all_submissions]
         evaluated_count = len(set(evaluated_ids) & set(all_ids))
 
@@ -54,19 +86,18 @@ def student_notifications(student_id: int, db: Session = Depends(get_db)):
             })
             total_unread += evaluated_count
 
-        # 新任务通知（该班级最近3天发布的任务）
-        from datetime import datetime, timedelta
         three_days_ago = datetime.now() - timedelta(days=3)
 
         new_tasks = db.query(Task).filter(
             Task.class_id.in_(class_ids),
-            Task.created_at >= three_days_ago
+            Task.created_at >= three_days_ago,
+            Task.created_at > read_threshold
         ).all()
 
         for t in new_tasks:
             submitted = db.query(Submission).filter(
                 Submission.task_id == t.id,
-                Submission.student_id == student_id
+                Submission.student_id == student_pk
             ).first()
             if not submitted:
                 notifications.append({
@@ -89,23 +120,39 @@ def student_notifications(student_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/teacher/{teacher_id}")
-def teacher_notifications(teacher_id: int, db: Session = Depends(get_db)):
-    """教师消息：学生提交了作业"""
-    # 查教师创建的班级
-    my_classes = db.query(Class).filter(Class.teacher_id == teacher_id).all()
+def teacher_notifications(
+    teacher_id: int,
+    read_since: Optional[int] = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 教师只能查看自己的通知
+    if user.role == "teacher" and int(user.id) != int(teacher_id):
+        raise HTTPException(status_code=403, detail="只能查看自己的通知")
+    from datetime import datetime, timedelta
+    teacher_pk = _account_to_teacher_pk(db, teacher_id)
+    if not teacher_pk:
+        return {
+            "success": True,
+            "data": {
+                "notifications": [],
+                "total_unread": 0
+            }
+        }
+
+    my_classes = db.query(Class).filter(Class.teacher_id == teacher_pk).all()
     class_ids = [c.id for c in my_classes]
 
     notifications = []
     total_unread = 0
 
+    read_threshold = datetime.fromtimestamp(read_since / 1000) if read_since and read_since > 0 else datetime.fromtimestamp(0)
+
     if class_ids:
-        # 查教师发布的任务
-        my_tasks = db.query(Task).filter(Task.created_by == teacher_id).all()
+        my_tasks = db.query(Task).filter(Task.created_by == teacher_pk).all()
         task_ids = [t.id for t in my_tasks]
 
         if task_ids:
-            # 查最近24小时提交
-            from datetime import datetime, timedelta
             yesterday = datetime.now() - timedelta(hours=24)
 
             recent_subs = db.query(Submission, Task.title, Evaluation.id).join(
@@ -117,11 +164,12 @@ def teacher_notifications(teacher_id: int, db: Session = Depends(get_db)):
                 Submission.created_at >= yesterday
             ).all()
 
-            # 去重计数
-            unrated_subs = [s for s in recent_subs if not s[2]]  # s[2] 是 Evaluation.id
+            # 新提交：仅统计 read_threshold 之后创建的
+            new_subs = [s for s in recent_subs if s[0].created_at > read_threshold]
+            new_count = len(new_subs)
 
-            new_count = len([s for s in recent_subs if s[0].created_at >= yesterday])
-
+            # 待评分：未评分且创建时间在 read_threshold 之后的
+            unrated_subs = [s for s in new_subs if not s[2]]
             unrated_count = len(unrated_subs)
 
             if new_count > 0:

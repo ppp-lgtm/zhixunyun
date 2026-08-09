@@ -6,21 +6,76 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.models.database import SessionLocal
 from app.models.class_models import Class, ClassMember
-from app.models.tables import User
+from app.models.tables import LoginAccount, Teacher, Student
+from app.models.class_models import Class, ClassMember  # noqa: F811 - 兼容已导入
+from app.utils.auth_deps import (
+    get_db, get_current_user, get_teacher_id, get_student_pk,
+    _account_to_teacher_id, _account_to_student_id,
+)
+from app.utils.auth import decode_token
 
 router = APIRouter(prefix="/api/classes", tags=["班级管理"])
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 def generate_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+def _account_to_teacher_id(db: Session, account_id: int) -> Optional[int]:
+    if not account_id or account_id <= 0:
+        return None
+    t = db.query(Teacher).filter(Teacher.account_id == int(account_id)).first()
+    return t.id if t else None
+
+
+def _account_to_student_id(db: Session, account_id: int) -> Optional[int]:
+    if not account_id or account_id <= 0:
+        return None
+    s = db.query(Student).filter(Student.account_id == int(account_id)).first()
+    return s.id if s else None
+
+
+def _resolve_teacher_name(db: Session, teacher_id: int) -> str:
+    """teacher_id 约定优先取 teachers.id，找不到再按 login_accounts.id 回退。返回 real_name/username。"""
+    if not teacher_id or teacher_id <= 0:
+        return ""
+    t = db.query(Teacher).filter(Teacher.id == int(teacher_id)).first()
+    if t and t.real_name:
+        return t.real_name or ""
+    if t:
+        acct = db.query(LoginAccount).filter(LoginAccount.id == t.account_id).first()
+        if acct:
+            return acct.username or ""
+    # 回退：按 login_accounts.id 查
+    acct = db.query(LoginAccount).filter(LoginAccount.id == int(teacher_id)).first()
+    if acct:
+        return acct.username or ""
+    return ""
+
+
+def _resolve_student_basic(db: Session, student_id: int):
+    """student_id 约定优先 students.id，找不到回退 login_accounts.id。
+    返回 (account_id_or_0, real_name, student_number/teacher_no)"""
+    if not student_id or student_id <= 0:
+        return 0, "", ""
+    s = db.query(Student).filter(Student.id == int(student_id)).first()
+    if s:
+        name = s.real_name or ""
+        if not name:
+            acct = db.query(LoginAccount).filter(LoginAccount.id == s.account_id).first()
+            if acct:
+                name = acct.username or ""
+        return s.account_id or 0, name, s.student_no or ""
+    # 回退：按 login_accounts.id 查
+    acct = db.query(LoginAccount).filter(LoginAccount.id == int(student_id)).first()
+    if not acct:
+        return 0, "", ""
+    if acct.role == "student":
+        s = db.query(Student).filter(Student.account_id == acct.id).first()
+        if s:
+            name = s.real_name or acct.username or ""
+            return acct.id, name, s.student_no or ""
+    return acct.id, acct.username or "", ""
 
 
 class ClassCreate(BaseModel):
@@ -30,7 +85,7 @@ class ClassCreate(BaseModel):
     semester: str = ""
     course_name: str = ""
     description: str = ""
-    teacher_id: int = 0
+    teacher_id: int = 0   # 前端约定传 login_accounts.id
     teacher_name: str = ""
 
 
@@ -45,24 +100,35 @@ class ClassUpdate(BaseModel):
 
 class JoinRequest(BaseModel):
     invite_code: str
-    student_id: int
+    student_id: int   # 前端约定传 login_accounts.id
     student_name: str = ""
     student_number: str = ""
 
 
-# 教师创建班级
+# 教师创建班级 — 需要登录认证
 @router.post("/")
-def create_class(req: ClassCreate, db: Session = Depends(get_db)):
+def create_class(
+    req: ClassCreate,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
     code = generate_code()
-    # 确保邀请码唯一
     while db.query(Class).filter(Class.invite_code == code).first():
         code = generate_code()
+
+    # teacher_id (login_accounts.id) -> teachers.id
+    teacher_pk = _account_to_teacher_id(db, req.teacher_id) if req.teacher_id else None
+    resolved_teacher_id = teacher_pk if teacher_pk else (req.teacher_id if req.teacher_id else None)
+
+    teacher_name = req.teacher_name or ""
+    if not teacher_name and resolved_teacher_id:
+        teacher_name = _resolve_teacher_name(db, resolved_teacher_id)
 
     c = Class(
         name=req.name, grade=req.grade, major=req.major,
         semester=req.semester, course_name=req.course_name,
-        description=req.description, teacher_id=req.teacher_id,
-        teacher_name=req.teacher_name, invite_code=code
+        description=req.description, teacher_id=resolved_teacher_id,
+        teacher_name=teacher_name, invite_code=code
     )
     db.add(c)
     db.commit()
@@ -70,13 +136,28 @@ def create_class(req: ClassCreate, db: Session = Depends(get_db)):
     return {"success": True, "data": {"id": c.id, "invite_code": c.invite_code}}
 
 
-# 教师查看自己创建的班级
+# 教师查看自己创建的班级 — 需要登录认证，教师只能看自己的班级
 @router.get("/")
-def get_my_classes(teacher_id: int = 0, db: Session = Depends(get_db)):
-    if teacher_id:
-        classes = db.query(Class).filter(Class.teacher_id == teacher_id).all()
+def get_my_classes(
+    teacher_id: int = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 从 token 获取当前用户身份
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk:
+        # 教师只能查看自己创建的班级
+        classes = db.query(Class).filter(Class.teacher_id == teacher_pk).all()
+    elif teacher_id:
+        # 非教师角色传入 teacher_id 时也转换并过滤
+        resolved = _account_to_teacher_id(db, teacher_id) if teacher_id else None
+        if resolved:
+            classes = db.query(Class).filter(Class.teacher_id == resolved).all()
+        else:
+            classes = db.query(Class).filter(Class.teacher_id == teacher_id).all()
     else:
-        classes = db.query(Class).all()
+        # 未登录或非教师，不返回全量数据
+        classes = db.query(Class).filter(Class.status == "active").all()
     return {
         "success": True,
         "data": [
@@ -90,10 +171,22 @@ def get_my_classes(teacher_id: int = 0, db: Session = Depends(get_db)):
     }
 
 
-# 学生查看已加入的班级
+# 学生查看已加入的班级 — 需要登录认证
 @router.get("/my")
-def get_my_enrolled(student_id: int = 0, db: Session = Depends(get_db)):
-    memberships = db.query(ClassMember).filter(ClassMember.student_id == student_id).all()
+def get_my_enrolled(
+    student_id: int = 0,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    # 学生角色只能查看自己的班级
+    stu_pk = get_student_pk(user, db)
+    if stu_pk:
+        fk = stu_pk
+    elif student_id:
+        fk = _account_to_student_id(db, student_id) if student_id else None
+    else:
+        return {"success": True, "data": []}
+    memberships = db.query(ClassMember).filter(ClassMember.student_id == fk).all() if fk else []
     class_ids = [m.class_id for m in memberships]
     classes = db.query(Class).filter(Class.id.in_(class_ids)).all() if class_ids else []
     return {
@@ -114,16 +207,30 @@ def join_class(req: JoinRequest, db: Session = Depends(get_db)):
     if not c:
         raise HTTPException(404, "班级不存在或邀请码错误")
 
+    # student_id (login_accounts.id) -> students.id
+    stu_pk = _account_to_student_id(db, req.student_id) if req.student_id else None
+    fk = stu_pk if stu_pk else req.student_id
+
     exist = db.query(ClassMember).filter(
         ClassMember.class_id == c.id,
-        ClassMember.student_id == req.student_id
-    ).first()
+        ClassMember.student_id == fk
+    ).first() if fk else None
     if exist:
         raise HTTPException(400, "你已加入该班级")
 
+    # 学生姓名/学号：入参填了就信任入参；没填就查学生表补
+    name = req.student_name or ""
+    number = req.student_number or ""
+    if (not name or not number) and fk:
+        _, res_name, res_no = _resolve_student_basic(db, fk)
+        if not name:
+            name = res_name
+        if not number:
+            number = res_no
+
     member = ClassMember(
-        class_id=c.id, student_id=req.student_id,
-        student_name=req.student_name, student_number=req.student_number
+        class_id=c.id, student_id=fk,
+        student_name=name, student_number=number
     )
     db.add(member)
     c.student_count += 1
@@ -139,11 +246,19 @@ def class_detail(class_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "班级不存在")
 
     members = db.query(ClassMember).filter(ClassMember.class_id == class_id).all()
-    students = [
-        {"id": m.id, "student_id": m.student_id, "student_name": m.student_name,
-         "student_number": m.student_number, "joined_at": str(m.joined_at)}
-        for m in members
-    ]
+    students = []
+    for m in members:
+        account_id, rname, rno = _resolve_student_basic(db, m.student_id)
+        name = m.student_name or rname
+        no = m.student_number or rno
+        students.append({
+            "id": m.id,
+            "student_id": account_id if account_id else m.student_id,
+            "student_pk": m.student_id,
+            "student_name": name,
+            "student_number": no,
+            "joined_at": str(m.joined_at),
+        })
 
     return {
         "success": True,
@@ -157,12 +272,21 @@ def class_detail(class_id: int, db: Session = Depends(get_db)):
     }
 
 
-# 编辑班级
+# 编辑班级 — 需要登录，只有班级所属教师可以编辑
 @router.put("/{class_id}")
-def update_class(class_id: int, req: ClassUpdate, db: Session = Depends(get_db)):
+def update_class(
+    class_id: int,
+    req: ClassUpdate,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
     c = db.query(Class).filter(Class.id == class_id).first()
     if not c:
         raise HTTPException(404, "班级不存在")
+    # 权限检查：只有该班级的教师可以编辑
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk and c.teacher_id != teacher_pk:
+        raise HTTPException(403, "只能编辑自己创建的班级")
     if req.name is not None: c.name = req.name
     if req.grade is not None: c.grade = req.grade
     if req.major is not None: c.major = req.major
@@ -173,28 +297,47 @@ def update_class(class_id: int, req: ClassUpdate, db: Session = Depends(get_db))
     return {"success": True, "message": "班级信息已更新"}
 
 
-# 解散班级
+# 解散班级 — 需要登录，只有班级所属教师可以解散
 @router.delete("/{class_id}")
-def delete_class(class_id: int, db: Session = Depends(get_db)):
+def delete_class(
+    class_id: int,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
     c = db.query(Class).filter(Class.id == class_id).first()
     if not c:
         raise HTTPException(404, "班级不存在")
+    # 权限检查：只有该班级的教师可以解散
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk and c.teacher_id != teacher_pk:
+        raise HTTPException(403, "只能解散自己创建的班级")
     db.query(ClassMember).filter(ClassMember.class_id == class_id).delete()
     db.delete(c)
     db.commit()
     return {"success": True, "message": "班级已解散"}
 
 
-# 移除学生
+# 移除学生 — 需要登录，只有班级所属教师可以移除
 @router.delete("/{class_id}/students/{member_id}")
-def remove_student(class_id: int, member_id: int, db: Session = Depends(get_db)):
+def remove_student(
+    class_id: int,
+    member_id: int,
+    db: Session = Depends(get_db),
+    user: LoginAccount = Depends(get_current_user),
+):
+    c = db.query(Class).filter(Class.id == class_id).first()
+    if not c:
+        raise HTTPException(404, "班级不存在")
+    # 权限检查
+    teacher_pk = get_teacher_id(user, db)
+    if teacher_pk and c.teacher_id != teacher_pk:
+        raise HTTPException(403, "只能移除自己班级的学生")
     member = db.query(ClassMember).filter(
         ClassMember.id == member_id,
         ClassMember.class_id == class_id
     ).first()
     if not member:
         raise HTTPException(404, "学生不存在")
-    c = db.query(Class).filter(Class.id == class_id).first()
     if c:
         c.student_count = max(0, c.student_count - 1)
     db.delete(member)

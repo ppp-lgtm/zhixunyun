@@ -118,7 +118,7 @@
 // 【完全保留你原有的所有业务逻辑，一行未改！只做视觉升级】
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '../api'
 import { ElMessage } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { API_BASE } from '../config'
@@ -144,7 +144,7 @@ const totalWeight = computed(() => {
 onMounted(async () => {
   try {
     const taskId = localStorage.getItem('current_task_id') || '1'
-    const res = await axios.get(`${API_BASE}/api/criteria/${taskId}`)
+    const res = await api.get(`/api/criteria/${taskId}`)
     if (res.data.success && res.data.data.length > 0) {
       form.criteria = res.data.data.map((c: any) => ({
         name: c.name,
@@ -180,7 +180,7 @@ const saveCriteria = async () => {
   saving.value = true
   try {
     const taskId = localStorage.getItem('current_task_id') || '1'
-    await axios.post(`${API_BASE}/api/criteria/batch/${taskId}`, form.criteria)
+    await api.post(`/api/criteria/batch/${taskId}`, form.criteria)
 
     localStorage.setItem('criteria_config', JSON.stringify(form.criteria))
 
